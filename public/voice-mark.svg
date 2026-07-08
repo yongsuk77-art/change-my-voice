@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="내 말투로">
+  <rect width="64" height="64" rx="12" fill="#dff3f1"/>
+  <path d="M20 38c7-1 14-7 15-18 8 3 12 11 10 19-2 9-10 15-19 13-5-1-9-5-10-10 1-2 2-3 4-4Z" fill="#087f83"/>
+  <path d="M22 20c4 3 6 7 6 12s-2 9-6 12" fill="none" stroke="#8b2f48" stroke-width="5" stroke-linecap="round"/>
+  <path d="M36 22c4 3 6 7 6 11" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+</svg>
