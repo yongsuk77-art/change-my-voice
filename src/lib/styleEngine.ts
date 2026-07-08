@@ -1,4 +1,4 @@
-import type { Destination, StyleOptions, StyleProfile } from "../types";
+import type { Destination, QualityIssue, QualityReport, StyleOptions, StyleProfile } from "../types";
 
 const CONNECTORS = [
   "사랑하는 성도 여러분",
@@ -88,24 +88,164 @@ export function rewriteLocally(source: string, sample: string, options: StyleOpt
   const profile = analyzeStyle(sample);
   const hasProfile = sample.trim().length > 80;
   const intensity = options.intensity / 100;
-  const paragraphs = normalizeWhitespace(source)
-    .split(/\n{2,}/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean);
+  const blocks = splitDocumentBlocks(source);
 
-  if (!paragraphs.length) return "";
+  if (!blocks.length) return "";
 
-  const rewritten = paragraphs.map((paragraph, index) => {
+  let proseIndex = 0;
+  const rewritten = blocks.map((paragraph) => {
+    if (isStructuralBlock(paragraph)) return paragraph;
+
     const sentences = splitSentences(paragraph);
     const shaped = sentences.map((sentence, sentenceIndex) =>
-      shapeSentence(sentence, profile, options, hasProfile, index, sentenceIndex)
+      shapeSentence(sentence, profile, options, hasProfile, proseIndex, sentenceIndex)
     );
-    return tuneParagraph(shaped.join(" "), profile, options, intensity, index);
+    const tuned = tuneParagraph(shaped.join(" "), profile, options, intensity, proseIndex);
+    proseIndex += 1;
+    return tuned;
   });
 
   const opened = addOpening(rewritten, profile, options, hasProfile);
   const closed = addClosing(opened, profile, options, hasProfile);
-  return closed.join("\n\n");
+  return finalizeTextQuality(source, closed.join("\n\n"), options).text;
+}
+
+export function finalizeTextQuality(original: string, draft: string, options: StyleOptions): { text: string; report: QualityReport } {
+  const issues: QualityIssue[] = [];
+  let text = draft.replace(/\r/g, "").trim();
+
+  const beforeStructureFix = text;
+  text = protectDocumentStructure(text);
+  if (text !== beforeStructureFix) {
+    issues.push({
+      id: "structure-auto-fixed",
+      label: "문서 구조 보정",
+      detail: "제목이나 번호 앞에 붙은 연결어를 제거했습니다.",
+      severity: "warn"
+    });
+  }
+
+  const headingRestore = restoreHeadingLines(original, text);
+  text = headingRestore.text;
+  if (headingRestore.changed) {
+    issues.push({
+      id: "heading-restored",
+      label: "원문 제목 복구",
+      detail: "결과의 제목 라인을 원문 제목과 같은 문구로 되돌렸습니다.",
+      severity: "warn"
+    });
+  }
+
+  const beforeSentenceFix = text;
+  text = polishSentences(text);
+  if (text !== beforeSentenceFix) {
+    issues.push({
+      id: "sentence-polished",
+      label: "문장 다듬기",
+      detail: "중복 표현, 어색한 조사, 불필요한 공백을 정리했습니다.",
+      severity: "warn"
+    });
+  }
+
+  const originalHeadings = extractHeadings(original);
+  const resultHeadings = extractHeadings(text);
+  if (originalHeadings.length && resultHeadings.length < originalHeadings.length) {
+    issues.push({
+      id: "heading-missing",
+      label: "제목 누락 가능성",
+      detail: `원문 제목 ${originalHeadings.length}개 중 결과에서 ${resultHeadings.length}개만 확인됩니다.`,
+      severity: "danger"
+    });
+  } else if (originalHeadings.length) {
+    issues.push({
+      id: "heading-preserved",
+      label: "제목 구조 유지",
+      detail: `원문 제목 ${originalHeadings.length}개를 결과에서도 확인했습니다.`,
+      severity: "ok"
+    });
+  }
+
+  const connectorBeforeStructure = text.match(/(^|\n)\s*(그러나|그러므로|다시 말해|분명히|조용히 마음을 비추어 보면),?\s*(#{1,6}\s|\d+\.\s)/g);
+  if (connectorBeforeStructure?.length) {
+    issues.push({
+      id: "connector-before-heading",
+      label: "연결어 위치 의심",
+      detail: "제목이나 번호 앞에 문장 연결어가 남아 있습니다.",
+      severity: "danger"
+    });
+  }
+
+  const originalKeywords = extractKeywords(original);
+  const missingKeywords = originalKeywords.filter((keyword) => !text.includes(keyword)).slice(0, 8);
+  if (missingKeywords.length >= 4) {
+    issues.push({
+      id: "keyword-loss",
+      label: "핵심어 누락 가능성",
+      detail: `원문 핵심어 일부가 결과에서 약해졌습니다: ${missingKeywords.join(", ")}`,
+      severity: "danger"
+    });
+  } else if (originalKeywords.length) {
+    issues.push({
+      id: "keyword-kept",
+      label: "핵심어 유지",
+      detail: "원문의 주요 용어가 대체로 유지되었습니다.",
+      severity: "ok"
+    });
+  }
+
+  const protectedTerms = extractProtectedTerms(original);
+  const missingTerms = protectedTerms.filter((term) => !text.includes(term)).slice(0, 8);
+  if (options.strictMeaning && missingTerms.length) {
+    issues.push({
+      id: "protected-term-loss",
+      label: "고유명사/숫자 누락",
+      detail: `원문에서 보존해야 할 표현이 빠졌을 수 있습니다: ${missingTerms.join(", ")}`,
+      severity: "danger"
+    });
+  }
+
+  const originalLength = original.replace(/\s/g, "").length;
+  const resultLength = text.replace(/\s/g, "").length;
+  if (options.strictMeaning && originalLength > 300) {
+    const ratio = resultLength / originalLength;
+    if (ratio < 0.62 || ratio > 1.7) {
+      issues.push({
+        id: "meaning-length-gap",
+        label: "내용 분량 차이",
+        detail: "결과 분량이 원문과 크게 달라 핵심 내용 전달 여부를 확인해야 합니다.",
+        severity: ratio < 0.45 || ratio > 2.1 ? "danger" : "warn"
+      });
+    }
+  }
+
+  const suspicious = findSuspiciousExpressions(text);
+  for (const item of suspicious.slice(0, 4)) {
+    issues.push({
+      id: `suspicious-${item}`,
+      label: "표현 점검 필요",
+      detail: item,
+      severity: "warn"
+    });
+  }
+
+  if (!issues.some((issue) => issue.severity !== "ok")) {
+    issues.unshift({
+      id: "quality-ok",
+      label: "최종 점검 통과",
+      detail: "문장 구조와 원문 보존에 큰 문제가 보이지 않습니다.",
+      severity: "ok"
+    });
+  }
+
+  const penalty = issues.reduce((sum, issue) => sum + (issue.severity === "danger" ? 22 : issue.severity === "warn" ? 8 : 0), 0);
+  return {
+    text,
+    report: {
+      score: clamp(100 - penalty, 30, 100),
+      issues,
+      checkedAt: new Date().toISOString()
+    }
+  };
 }
 
 export function scoreMatch(text: string, profile: StyleProfile): number {
@@ -152,9 +292,15 @@ function shapeSentence(
     shaped = shaped.replace(/습니다\./g, "습니다.").replace(/것입니다\./g, "겁니다.");
   }
 
-  const shouldAddBridge = hasProfile && options.intensity >= 78 && sentenceIndex === 0 && paragraphIndex > 0;
+  const shouldAddBridge =
+    hasProfile &&
+    options.intensity >= 88 &&
+    sentenceIndex === 0 &&
+    paragraphIndex > 0 &&
+    paragraphIndex % 2 === 1 &&
+    !isSequenceLead(shaped);
   if (shouldAddBridge) {
-    const bridge = pick(profile.topConnectors, paragraphIndex) || (paragraphIndex % 2 ? "그러므로" : "여기서");
+    const bridge = pick(profile.topConnectors.filter(isBridgeConnector), paragraphIndex) || (paragraphIndex % 2 ? "그러므로" : "여기서");
     if (!shaped.startsWith(bridge)) {
       shaped = `${bridge}, ${lowerFirstParticle(shaped)}`;
     }
@@ -205,26 +351,30 @@ function addOpening(paragraphs: string[], profile: StyleProfile, options: StyleO
   if (!paragraphs.length) return paragraphs;
   if (options.intensity < 88 || !hasProfile) return paragraphs;
   if (options.destination !== "sermon") return paragraphs;
-  if (/^사랑하는|^여러분/.test(paragraphs[0])) return paragraphs;
+  const targetIndex = paragraphs.findIndex((paragraph) => !isStructuralBlock(paragraph));
+  if (targetIndex < 0) return paragraphs;
+  if (/^사랑하는|^여러분/.test(paragraphs[targetIndex])) return paragraphs;
 
   const opener = profile.topConnectors.includes("사랑하는 성도 여러분")
     ? "사랑하는 성도 여러분, "
     : "여러분, ";
-  return [opener + lowerFirstParticle(paragraphs[0]), ...paragraphs.slice(1)];
+  return paragraphs.map((paragraph, index) => (index === targetIndex ? opener + lowerFirstParticle(paragraph) : paragraph));
 }
 
 function addClosing(paragraphs: string[], profile: StyleProfile, options: StyleOptions, hasProfile: boolean) {
   if (!paragraphs.length) return paragraphs;
   if (!hasProfile || options.intensity < 82) return paragraphs;
   if (options.destination !== "sermon" && options.destination !== "devotional") return paragraphs;
-  const last = paragraphs[paragraphs.length - 1];
+  const targetIndex = [...paragraphs].map((paragraph, index) => ({ paragraph, index })).reverse().find((item) => !isStructuralBlock(item.paragraph))?.index ?? -1;
+  if (targetIndex < 0) return paragraphs;
+  const last = paragraphs[targetIndex];
   if (/기도합니다|소망합니다|축복합니다|바랍니다/.test(last)) return paragraphs;
   const ending = pick(profile.topEndings, 0);
   const closing =
     ending && /합니다|습니다|바랍니다/.test(ending)
       ? "이 은혜를 오늘 우리의 삶 속에 조용히 붙들 수 있기를 바랍니다."
       : "이 말씀이 오늘 우리의 마음과 걸음을 다시 세워 주기를 소망합니다.";
-  return [...paragraphs.slice(0, -1), `${last} ${closing}`];
+  return paragraphs.map((paragraph, index) => (index === targetIndex ? `${last} ${closing}` : paragraph));
 }
 
 function sermonizeEnding(sentence: string, profile: StyleProfile, intensity: number) {
@@ -256,6 +406,164 @@ function splitSentences(text: string) {
 
 function normalizeWhitespace(text: string) {
   return text.replace(/\r/g, "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function splitDocumentBlocks(text: string) {
+  const lines = normalizeWhitespace(text).split("\n");
+  const blocks: string[] = [];
+  let proseLines: string[] = [];
+  let structuralLines: string[] = [];
+  let inFence = false;
+
+  const flushProse = () => {
+    if (!proseLines.length) return;
+    blocks.push(proseLines.join(" ").trim());
+    proseLines = [];
+  };
+
+  const flushStructure = () => {
+    if (!structuralLines.length) return;
+    blocks.push(structuralLines.join("\n").trim());
+    structuralLines = [];
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      flushProse();
+      flushStructure();
+      continue;
+    }
+
+    if (/^```/.test(line)) {
+      flushProse();
+      structuralLines.push(line);
+      inFence = !inFence;
+      if (!inFence) flushStructure();
+      continue;
+    }
+
+    if (inFence || isStructuralLine(line)) {
+      flushProse();
+      structuralLines.push(line);
+      continue;
+    }
+
+    flushStructure();
+    proseLines.push(line);
+  }
+
+  flushProse();
+  flushStructure();
+  return blocks.filter(Boolean);
+}
+
+function isStructuralBlock(text: string) {
+  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+  if (!lines.length) return false;
+  return lines.every((line) => /^```/.test(line) || isStructuralLine(line));
+}
+
+function isStructuralLine(line: string) {
+  return /^(#{1,6}\s|[-*+]\s|\d+\.\s|>\s|---$|\|.*\|$)/.test(line.trim());
+}
+
+function protectDocumentStructure(text: string) {
+  const connectorPattern = /^(조용히 마음을 비추어 보면|그러나|그러므로|다시 말해|분명히|여기서|결국|이것이|여러분|사랑하는 성도 여러분)\s*,?\s*/;
+  return text
+    .split("\n")
+    .map((line) => {
+      const trimmed = line.trimStart();
+      const cleaned = trimmed.replace(connectorPattern, "");
+      return isStructuralLine(cleaned) ? cleaned : line;
+    })
+    .join("\n");
+}
+
+function restoreHeadingLines(original: string, result: string) {
+  const originalHeadings = extractHeadings(original);
+  if (!originalHeadings.length) return { text: result, changed: false };
+
+  let headingIndex = 0;
+  let changed = false;
+  const lines = result.split("\n").map((line) => {
+    if (!isHeadingLine(line) || headingIndex >= originalHeadings.length) return line;
+    const restored = originalHeadings[headingIndex];
+    headingIndex += 1;
+    if (line.trim() === restored) return line;
+    changed = true;
+    return restored;
+  });
+
+  return { text: lines.join("\n"), changed };
+}
+
+function polishSentences(text: string) {
+  return text
+    .replace(/[ \t]+([,.:;!?])/g, "$1")
+    .replace(/([.!?]){2,}/g, "$1")
+    .replace(/(^|\n)(믿음은|하나님은|주님은),\s+(?=[가-힣])/g, "$1")
+    .replace(/(^|\n)(그러나|그러므로|다시 말해|분명히|여기서),\s+(?=(첫째|둘째|셋째|넷째|다섯째|마지막|먼저|다음으로))/g, "$1")
+    .replace(/것인 것입니다/g, "것입니다")
+    .replace(/것인 것/g, "것")
+    .replace(/중심 내용은 유지하되/g, "핵심 내용은 유지하되")
+    .replace(/우리가 붙들 중심은/g, "우리가 붙들어야 할 중심은")
+    .replace(/([가-힣])\s+입니다/g, "$1입니다")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function extractHeadings(text: string) {
+  return text
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(isHeadingLine);
+}
+
+function isHeadingLine(line: string) {
+  const trimmed = line.trim();
+  return /^(#{1,6}\s+|\d+\.\s+)/.test(trimmed) && trimmed.length <= 120;
+}
+
+function extractKeywords(text: string) {
+  const tokens = text.match(/[가-힣A-Za-z][가-힣A-Za-z0-9'()·:-]{2,}/g) ?? [];
+  const stopWords = new Set(["그리고", "그러나", "그러므로", "입니다", "합니다", "있습니다", "것입니다", "우리", "오늘", "대한", "통해", "있는", "없는", "때문입니다"]);
+  return topItems(
+    tokens.filter((token) => !stopWords.has(token) && token.length <= 24),
+    18
+  );
+}
+
+function extractProtectedTerms(text: string) {
+  const terms = [
+    ...(text.match(/[가-힣]{1,12}\s?\d{1,3}:\d{1,3}(?:-\d{1,3})?/g) ?? []),
+    ...(text.match(/\b[A-Z][A-Za-z'’.-]{2,}\b/g) ?? []),
+    ...(text.match(/\([^)]{2,30}\)/g) ?? []),
+    ...(text.match(/\b\d+(?:[,.]\d+)*(?:%|편|장|절|명|개|년|월|일)\b/g) ?? [])
+  ];
+  return [...new Set(terms.map((term) => term.trim()).filter(Boolean))].slice(0, 24);
+}
+
+function isBridgeConnector(value: string) {
+  return /^(그러나|그러므로|다시 말해|결국|분명히|여기서)$/.test(value);
+}
+
+function isSequenceLead(value: string) {
+  return /^(첫째|둘째|셋째|넷째|다섯째|마지막|먼저|다음으로)(는|,|\s|$)/.test(value.trim());
+}
+
+function findSuspiciousExpressions(text: string) {
+  const checks: Array<[RegExp, string]> = [
+    [/,\s*#{1,6}\s/g, "제목 앞에 쉼표나 연결어가 붙은 흔적이 있습니다."],
+    [/#{1,6}\s.+[.?!]$/m, "제목 줄이 문장처럼 끝나는 부분이 있습니다."],
+    [/그러나,\s*그러나|그러므로,\s*그러므로/g, "같은 연결어가 반복됩니다."],
+    [/입니다\.\s*입니다|합니다\.\s*합니다/g, "종결 표현이 반복됩니다."],
+    [/(믿음은|하나님은|주님은),\s+[가-힣]/g, "주어처럼 쓰인 말을 접속어처럼 붙인 부분이 있습니다."],
+    [/[가-힣][ \t]{2,}[가-힣]/g, "문장 중간에 불필요한 공백이 있습니다."],
+    [/([가-힣]{2,})[ \t]+\1/g, "같은 단어가 연속으로 반복됩니다."]
+  ];
+  return checks.filter(([pattern]) => pattern.test(text)).map(([, message]) => message);
 }
 
 function extractSignaturePhrases(text: string) {

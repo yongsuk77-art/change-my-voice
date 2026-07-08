@@ -20,9 +20,9 @@ import {
   Wand2
 } from "lucide-react";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
-import { analyzeStyle, destinationLabel, rewriteLocally, scoreMatch } from "./lib/styleEngine";
+import { analyzeStyle, destinationLabel, finalizeTextQuality, rewriteLocally, scoreMatch } from "./lib/styleEngine";
 import { extractPdfText } from "./lib/pdfReader";
-import type { Destination, RewriteResult, StyleOptions, StyleSnapshot, StyleSource, StyleSourceKind } from "./types";
+import type { Destination, QualityReport, RewriteResult, StyleOptions, StyleSnapshot, StyleSource, StyleSourceKind } from "./types";
 
 const STORAGE_KEY = "change-my-voice-state-v2";
 const OLD_STORAGE_KEY = "change-my-voice-state-v1";
@@ -55,7 +55,8 @@ function App() {
     rhythm: 62,
     keepScripture: true,
     strictMeaning: true,
-    humanize: true
+    humanize: true,
+    finalCheck: true
   });
   const [isLoading, setIsLoading] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
@@ -136,10 +137,13 @@ function App() {
 
     try {
       if (status?.provider !== "openai") {
+        const draft = rewriteLocally(sourceText, styleBaseText, options);
+        const checked = applyFinalCheck(sourceText, draft);
         setResult({
-          text: rewriteLocally(sourceText, styleBaseText, options),
+          text: checked.text,
           provider: "local",
-          baseLabel: label
+          baseLabel: label,
+          quality: checked.report
         });
         return;
       }
@@ -157,11 +161,13 @@ function App() {
 
       if (response.ok) {
         const data = await response.json();
+        const checked = applyFinalCheck(sourceText, data.text);
         setResult({
-          text: data.text,
+          text: checked.text,
           provider: data.provider,
           model: data.model,
-          baseLabel: label
+          baseLabel: label,
+          quality: checked.report
         });
         return;
       }
@@ -170,16 +176,22 @@ function App() {
       if (response.status !== 503) {
         setError(data.error || "서버 변환에 실패해 로컬 변환으로 처리했습니다.");
       }
+      const fallbackDraft = rewriteLocally(sourceText, styleBaseText, options);
+      const checked = applyFinalCheck(sourceText, fallbackDraft);
       setResult({
-        text: rewriteLocally(sourceText, styleBaseText, options),
+        text: checked.text,
         provider: "local",
-        baseLabel: label
+        baseLabel: label,
+        quality: checked.report
       });
     } catch {
+      const fallbackDraft = rewriteLocally(sourceText, styleBaseText, options);
+      const checked = applyFinalCheck(sourceText, fallbackDraft);
       setResult({
-        text: rewriteLocally(sourceText, styleBaseText, options),
+        text: checked.text,
         provider: "local",
-        baseLabel: label
+        baseLabel: label,
+        quality: checked.report
       });
     } finally {
       setIsLoading(false);
@@ -193,11 +205,32 @@ function App() {
   function handleLocalRewrite() {
     setError("");
     setCopied(false);
+    const draft = rewriteLocally(sourceText, baseText, options);
+    const checked = applyFinalCheck(sourceText, draft);
     setResult({
-      text: rewriteLocally(sourceText, baseText, options),
+      text: checked.text,
       provider: "local",
-      baseLabel
+      baseLabel,
+      quality: checked.report
     });
+  }
+
+  function applyFinalCheck(original: string, draft: string): { text: string; report?: QualityReport } {
+    if (!options.finalCheck) return { text: draft };
+    return finalizeTextQuality(original, draft, options);
+  }
+
+  function handleResultEdit(text: string) {
+    const checked = options.finalCheck ? finalizeTextQuality(sourceText, text, options) : undefined;
+    setResult((current) =>
+      current
+        ? {
+            ...current,
+            text,
+            quality: checked?.report
+          }
+        : current
+    );
   }
 
   function handlePreviousRewrite() {
@@ -477,6 +510,11 @@ function App() {
                 checked={options.humanize}
                 onChange={() => setOptions((current) => ({ ...current, humanize: !current.humanize }))}
               />
+              <Toggle
+                label="최종 점검"
+                checked={options.finalCheck}
+                onChange={() => setOptions((current) => ({ ...current, finalCheck: !current.finalCheck }))}
+              />
             </div>
           </div>
 
@@ -511,7 +549,7 @@ function App() {
               <textarea
                 className="text-area result-area"
                 value={result.text}
-                onChange={(event) => setResult({ ...(result ?? { provider: "local" }), text: event.target.value })}
+                onChange={(event) => handleResultEdit(event.target.value)}
                 spellCheck={false}
                 aria-label="변환 결과"
               />
@@ -541,10 +579,36 @@ function App() {
             <Metric label="권면 밀도" value={result ? `${resultProfile.exhortationRate}%` : "-"} />
           </div>
 
+          <QualityPanel report={result?.quality} />
+
           <SnapshotList snapshots={snapshots} onSelect={(id) => setSelectedSnapshotId(id)} />
         </article>
       </section>
     </main>
+  );
+}
+
+function QualityPanel({ report }: { report?: QualityReport }) {
+  return (
+    <div className="quality-panel">
+      <div className="section-label">
+        <Check size={15} />
+        <span>최종 점검</span>
+        {report ? <strong>{report.score}점</strong> : null}
+      </div>
+      {report ? (
+        <div className="quality-list">
+          {report.issues.slice(0, 5).map((issue) => (
+            <div className="quality-item" data-severity={issue.severity} key={issue.id}>
+              <strong>{issue.label}</strong>
+              <span>{issue.detail}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="empty-list">결과 생성 후 점검</div>
+      )}
+    </div>
   );
 }
 

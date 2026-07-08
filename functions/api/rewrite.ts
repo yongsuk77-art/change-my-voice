@@ -13,6 +13,7 @@ type RewriteBody = {
     strictMeaning?: boolean;
     keepScripture?: boolean;
     humanize?: boolean;
+    finalCheck?: boolean;
   };
   model?: string;
 };
@@ -108,6 +109,7 @@ function buildInstructions(body: RewriteBody) {
   const strictMeaning = options.strictMeaning !== false;
   const keepScripture = options.keepScripture !== false;
   const humanize = options.humanize !== false;
+  const finalCheck = options.finalCheck !== false;
 
   return [
     "너는 한국어 목회 글쓰기 편집자다.",
@@ -118,7 +120,12 @@ function buildInstructions(body: RewriteBody) {
     strictMeaning ? "원문의 핵심 주장과 사실관계는 바꾸지 않는다." : "의미를 해치지 않는 범위에서 배열과 표현을 자유롭게 다듬는다.",
     keepScripture ? "성경 장절, 인명, 지명, 숫자, 직접 인용은 보존한다." : "성경 장절과 인용도 자연스러운 흐름 안에서 정리할 수 있다.",
     humanize ? "AI가 쓴 듯한 균질한 문장, 과한 요약어, 목록식 문체, 홍보성 표현을 피하고 사람의 호흡을 살린다." : "문장은 깔끔하고 정돈되게 유지한다.",
-    "결과만 한국어 본문으로 출력한다. 설명, 머리말, 따옴표, Markdown 제목은 붙이지 않는다."
+    "원문에 이미 있는 Markdown 제목(#, ##), 번호 제목, 목록, 표, 코드블록은 구조와 기호를 그대로 보존한다.",
+    "기존 제목의 문구는 바꾸지 말고, 제목 앞에 연결어·감탄사·머리말을 붙이지 않는다.",
+    finalCheck
+      ? "출력 직전 맞춤법, 띄어쓰기, 어색한 문장, 주어-서술어 호응, 원문 핵심어·숫자·성경 장절 누락 여부를 점검한다. 문체를 억지로 입혀 문장이 어색해지면 원문 의미와 자연스러운 문장을 우선한다."
+      : "문체를 억지로 입혀 문장이 어색해지면 원문 의미와 자연스러운 문장을 우선한다.",
+    "결과만 한국어 본문으로 출력한다. 설명, 머리말, 따옴표는 붙이지 않는다. 단, 원문에 있던 Markdown 제목은 그대로 유지한다."
   ].join("\n");
 }
 

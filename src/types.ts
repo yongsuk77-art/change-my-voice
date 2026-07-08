@@ -7,6 +7,7 @@ export type StyleOptions = {
   keepScripture: boolean;
   strictMeaning: boolean;
   humanize: boolean;
+  finalCheck: boolean;
 };
 
 export type StyleProfile = {
@@ -29,6 +30,22 @@ export type RewriteResult = {
   provider: "openai" | "local";
   model?: string;
   baseLabel?: string;
+  quality?: QualityReport;
+};
+
+export type QualityIssueSeverity = "ok" | "warn" | "danger";
+
+export type QualityIssue = {
+  id: string;
+  label: string;
+  detail: string;
+  severity: QualityIssueSeverity;
+};
+
+export type QualityReport = {
+  score: number;
+  issues: QualityIssue[];
+  checkedAt: string;
 };
 
 export type StyleSourceKind = "manual" | "txt" | "md" | "pdf";
