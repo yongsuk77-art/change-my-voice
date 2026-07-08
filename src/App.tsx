@@ -1,23 +1,32 @@
 import {
+  Archive,
   BookOpenText,
   Check,
   Clipboard,
+  Database,
   Download,
+  Eye,
+  EyeOff,
   FileText,
   Gauge,
+  History,
   Loader2,
   Mic2,
   RefreshCcw,
   Save,
   Sparkles,
+  Trash2,
   Upload,
   Wand2
 } from "lucide-react";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { analyzeStyle, destinationLabel, rewriteLocally, scoreMatch } from "./lib/styleEngine";
-import type { Destination, RewriteResult, StyleOptions } from "./types";
+import { extractPdfText } from "./lib/pdfReader";
+import type { Destination, RewriteResult, StyleOptions, StyleSnapshot, StyleSource, StyleSourceKind } from "./types";
 
-const STORAGE_KEY = "change-my-voice-state-v1";
+const STORAGE_KEY = "change-my-voice-state-v2";
+const OLD_STORAGE_KEY = "change-my-voice-state-v1";
+const MAX_SNAPSHOTS = 20;
 
 const defaultSample = `사랑하는 성도 여러분, 오늘 우리는 주님 앞에서 다시 마음을 살펴보아야 합니다. 믿음은 멀리 있는 말이 아니라, 오늘 우리의 작은 순종 속에서 자라나는 생명입니다.
 
@@ -34,7 +43,10 @@ const destinationOptions: Array<{ value: Destination; label: string }> = [
 ];
 
 function App() {
-  const [sampleText, setSampleText] = useState(defaultSample);
+  const [manualText, setManualText] = useState(defaultSample);
+  const [sources, setSources] = useState<StyleSource[]>([]);
+  const [snapshots, setSnapshots] = useState<StyleSnapshot[]>([]);
+  const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(null);
   const [sourceText, setSourceText] = useState(defaultSource);
   const [result, setResult] = useState<RewriteResult | null>(null);
   const [options, setOptions] = useState<StyleOptions>({
@@ -46,36 +58,60 @@ function App() {
     humanize: true
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [isParsing, setIsParsing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [status, setStatus] = useState<{ provider: "openai" | "local"; model: string } | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(OLD_STORAGE_KEY);
     if (!stored) return;
     try {
       const parsed = JSON.parse(stored);
-      setSampleText(parsed.sampleText || defaultSample);
+      setManualText(parsed.manualText || parsed.sampleText || defaultSample);
+      setSources(Array.isArray(parsed.sources) ? parsed.sources : []);
+      setSnapshots(Array.isArray(parsed.snapshots) ? parsed.snapshots : []);
+      setSelectedSnapshotId(parsed.selectedSnapshotId || null);
       setSourceText(parsed.sourceText || defaultSource);
-      setOptions({ ...options, ...parsed.options });
+      setOptions((current) => ({ ...current, ...parsed.options }));
       setResult(parsed.result || null);
     } catch {
       localStorage.removeItem(STORAGE_KEY);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const currentBaseText = useMemo(() => {
+    return [manualText, ...sources.filter((source) => source.enabled).map((source) => source.text)]
+      .map((text) => text.trim())
+      .filter(Boolean)
+      .join("\n\n");
+  }, [manualText, sources]);
+
+  const selectedSnapshot = useMemo(
+    () => snapshots.find((snapshot) => snapshot.id === selectedSnapshotId) ?? null,
+    [selectedSnapshotId, snapshots]
+  );
+  const baseText = selectedSnapshot?.text ?? currentBaseText;
+  const baseLabel = selectedSnapshot ? selectedSnapshot.name : "현재 베이스";
+
   useEffect(() => {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        sampleText,
-        sourceText,
-        options,
-        result
-      })
-    );
-  }, [sampleText, sourceText, options, result]);
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          manualText,
+          sources,
+          snapshots,
+          selectedSnapshotId,
+          sourceText,
+          options,
+          result
+        })
+      );
+    } catch {
+      setError("브라우저 저장 공간이 부족합니다. 큰 PDF는 일부 소스를 삭제한 뒤 다시 추가해 주세요.");
+    }
+  }, [manualText, sources, snapshots, selectedSnapshotId, sourceText, options, result]);
 
   useEffect(() => {
     fetch("/api/health")
@@ -84,13 +120,16 @@ function App() {
       .catch(() => setStatus({ provider: "local", model: "브라우저 엔진" }));
   }, []);
 
-  const profile = useMemo(() => analyzeStyle(sampleText), [sampleText]);
+  const profile = useMemo(() => analyzeStyle(baseText), [baseText]);
   const resultProfile = useMemo(() => analyzeStyle(result?.text ?? ""), [result]);
   const matchScore = useMemo(() => (result?.text ? scoreMatch(result.text, profile) : 0), [result, profile]);
   const sourceChars = sourceText.replace(/\s/g, "").length;
-  const sampleChars = sampleText.replace(/\s/g, "").length;
+  const baseChars = baseText.replace(/\s/g, "").length;
+  const currentChars = currentBaseText.replace(/\s/g, "").length;
+  const enabledSourceCount = sources.filter((source) => source.enabled).length + (manualText.trim() ? 1 : 0);
+  const volume = getVolumeStatus(baseChars);
 
-  async function handleRewrite() {
+  async function rewriteWithBase(styleBaseText: string, label: string) {
     setIsLoading(true);
     setError("");
     setCopied(false);
@@ -98,8 +137,9 @@ function App() {
     try {
       if (status?.provider !== "openai") {
         setResult({
-          text: rewriteLocally(sourceText, sampleText, options),
-          provider: "local"
+          text: rewriteLocally(sourceText, styleBaseText, options),
+          provider: "local",
+          baseLabel: label
         });
         return;
       }
@@ -108,9 +148,9 @@ function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sampleText,
+          sampleText: styleBaseText,
           sourceText,
-          styleProfile: profile,
+          styleProfile: analyzeStyle(styleBaseText),
           options
         })
       });
@@ -120,7 +160,8 @@ function App() {
         setResult({
           text: data.text,
           provider: data.provider,
-          model: data.model
+          model: data.model,
+          baseLabel: label
         });
         return;
       }
@@ -130,26 +171,42 @@ function App() {
         setError(data.error || "서버 변환에 실패해 로컬 변환으로 처리했습니다.");
       }
       setResult({
-        text: rewriteLocally(sourceText, sampleText, options),
-        provider: "local"
+        text: rewriteLocally(sourceText, styleBaseText, options),
+        provider: "local",
+        baseLabel: label
       });
     } catch {
       setResult({
-        text: rewriteLocally(sourceText, sampleText, options),
-        provider: "local"
+        text: rewriteLocally(sourceText, styleBaseText, options),
+        provider: "local",
+        baseLabel: label
       });
     } finally {
       setIsLoading(false);
     }
   }
 
+  function handleRewrite() {
+    void rewriteWithBase(baseText, baseLabel);
+  }
+
   function handleLocalRewrite() {
     setError("");
     setCopied(false);
     setResult({
-      text: rewriteLocally(sourceText, sampleText, options),
-      provider: "local"
+      text: rewriteLocally(sourceText, baseText, options),
+      provider: "local",
+      baseLabel
     });
+  }
+
+  function handlePreviousRewrite() {
+    const snapshot = snapshots[0];
+    if (!snapshot) {
+      setError("아직 저장된 이전 베이스가 없습니다.");
+      return;
+    }
+    void rewriteWithBase(snapshot.text, snapshot.name);
   }
 
   async function handleCopy() {
@@ -171,11 +228,86 @@ function App() {
   }
 
   async function handleFileUpload(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const text = await file.text();
-    setSampleText((current) => `${current.trim()}\n\n${text.trim()}`.trim());
-    event.target.value = "";
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length) return;
+
+    setIsParsing(true);
+    setError("");
+    setCopied(false);
+
+    const beforeText = currentBaseText;
+    try {
+      const addedSources: StyleSource[] = [];
+      for (const file of files) {
+        const kind = getSourceKind(file);
+        const rawText = kind === "pdf" ? await extractPdfText(file) : await file.text();
+        const text = normalizeImportedText(rawText);
+
+        if (text.replace(/\s/g, "").length < 40) {
+          setError(`${file.name}에서 충분한 텍스트를 찾지 못했습니다.`);
+          continue;
+        }
+
+        addedSources.push({
+          id: createId(),
+          name: file.name,
+          kind,
+          text,
+          charCount: text.replace(/\s/g, "").length,
+          size: file.size,
+          addedAt: new Date().toISOString(),
+          enabled: true
+        });
+      }
+
+      if (!addedSources.length) return;
+      if (beforeText.trim()) addSnapshotFromText(beforeText, "before-update", "업데이트 전 베이스");
+      setSources((current) => [...current, ...addedSources]);
+      setSelectedSnapshotId(null);
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "파일을 읽는 중 문제가 생겼습니다.");
+    } finally {
+      setIsParsing(false);
+      event.target.value = "";
+    }
+  }
+
+  function handleSaveSnapshot() {
+    if (!currentBaseText.trim()) return;
+    addSnapshotFromText(currentBaseText, "manual", "수동 저장 베이스");
+    setSelectedSnapshotId(null);
+  }
+
+  function handleResetBase() {
+    if (currentBaseText.trim()) addSnapshotFromText(currentBaseText, "before-reset", "초기화 전 베이스");
+    setManualText("");
+    setSources([]);
+    setSelectedSnapshotId(null);
+  }
+
+  function handleDeleteSource(id: string) {
+    if (currentBaseText.trim()) addSnapshotFromText(currentBaseText, "before-update", "삭제 전 베이스");
+    setSources((current) => current.filter((source) => source.id !== id));
+    setSelectedSnapshotId(null);
+  }
+
+  function addSnapshotFromText(text: string, reason: StyleSnapshot["reason"], label: string) {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    setSnapshots((current) => {
+      if (current[0]?.text === trimmed) return current;
+      const snapshot: StyleSnapshot = {
+        id: createId(),
+        name: `${label} ${formatDateTime(new Date().toISOString())}`,
+        text: trimmed,
+        charCount: trimmed.replace(/\s/g, "").length,
+        sourceCount: enabledSourceCount,
+        createdAt: new Date().toISOString(),
+        reason
+      };
+      return [snapshot, ...current].slice(0, MAX_SNAPSHOTS);
+    });
   }
 
   return (
@@ -198,31 +330,81 @@ function App() {
 
       <section className="workspace">
         <article className="panel panel-samples">
-          <PanelTitle icon={<BookOpenText size={20} />} title="문체 베이스" meta={`${sampleChars.toLocaleString()}자`} />
+          <PanelTitle icon={<BookOpenText size={20} />} title="문체 베이스" meta={`${baseChars.toLocaleString()}자`} />
+
+          <div className="base-toolbar">
+            <label className="icon-text-button file-button" title="TXT, MD, PDF 추가">
+              {isParsing ? <Loader2 className="spin" size={17} /> : <Upload size={17} />}
+              파일
+              <input type="file" accept=".txt,.md,.text,.pdf,text/plain,text/markdown,application/pdf" multiple onChange={handleFileUpload} />
+            </label>
+            <button className="icon-text-button" title="현재 베이스 저장" onClick={handleSaveSnapshot} disabled={!currentBaseText.trim()}>
+              <Save size={17} />
+              저장
+            </button>
+            <button className="icon-text-button" title="현재 베이스 초기화" onClick={handleResetBase} disabled={!currentBaseText.trim()}>
+              <Trash2 size={17} />
+              초기화
+            </button>
+          </div>
+
+          <div className="snapshot-row">
+            <select
+              aria-label="사용할 문체 베이스"
+              value={selectedSnapshotId ?? "current"}
+              onChange={(event) => setSelectedSnapshotId(event.target.value === "current" ? null : event.target.value)}
+            >
+              <option value="current">현재 축적 베이스</option>
+              {snapshots.map((snapshot) => (
+                <option key={snapshot.id} value={snapshot.id}>
+                  {snapshot.name}
+                </option>
+              ))}
+            </select>
+            {selectedSnapshot ? (
+              <button className="text-button" onClick={() => setSelectedSnapshotId(null)}>현재</button>
+            ) : null}
+          </div>
+
           <textarea
             className="text-area sample-area"
-            value={sampleText}
-            onChange={(event) => setSampleText(event.target.value)}
+            value={selectedSnapshot ? selectedSnapshot.text : manualText}
+            onChange={(event) => setManualText(event.target.value)}
             spellCheck={false}
-            aria-label="옛 설교문 샘플"
+            readOnly={Boolean(selectedSnapshot)}
+            aria-label="문체 베이스 직접 입력"
           />
-          <div className="panel-actions">
-            <label className="icon-button file-button" title="TXT 파일 추가">
-              <Upload size={17} />
-              <input type="file" accept=".txt,.md,.text" onChange={handleFileUpload} />
-            </label>
-            <button className="icon-button" title="샘플 저장" onClick={() => localStorage.setItem(STORAGE_KEY, JSON.stringify({ sampleText, sourceText, options, result }))}>
-              <Save size={17} />
-            </button>
-            <button className="text-button" onClick={() => setSampleText("")}>비우기</button>
+
+          <div className="volume-card">
+            <div>
+              <span>분량 기준</span>
+              <strong>{volume.label}</strong>
+            </div>
+            <div className="volume-track">
+              <i style={{ width: `${volume.progress}%` }} />
+            </div>
+            <div className="volume-scale">
+              <span>8천</span>
+              <span>3만</span>
+              <span>5만+</span>
+            </div>
           </div>
 
           <div className="fingerprint">
-            <Metric label="문장 호흡" value={profile.rhythmLabel} />
+            <Metric label="활성 소스" value={`${enabledSourceCount}개`} />
             <Metric label="평균 길이" value={`${profile.averageSentenceLength || 0}자`} />
             <Metric label="권면 밀도" value={`${profile.exhortationRate}%`} />
             <Metric label="따뜻함" value={`${profile.warmthScore}%`} />
           </div>
+
+          <SourceList
+            sources={sources}
+            onToggle={(id) => {
+              setSources((current) => current.map((source) => (source.id === id ? { ...source, enabled: !source.enabled } : source)));
+              setSelectedSnapshotId(null);
+            }}
+            onDelete={handleDeleteSource}
+          />
 
           <ChipGroup title="자주 보이는 말" items={profile.topConnectors.concat(profile.signaturePhrases).slice(0, 8)} />
           <ChipGroup title="종결 리듬" items={profile.topEndings.slice(0, 6)} />
@@ -301,22 +483,27 @@ function App() {
           {error ? <div className="inline-error">{error}</div> : null}
 
           <div className="primary-actions">
-            <button className="primary-button" onClick={handleRewrite} disabled={isLoading || !sourceText.trim()}>
+            <button className="primary-button" onClick={handleRewrite} disabled={isLoading || !sourceText.trim() || !baseText.trim()}>
               {isLoading ? <Loader2 className="spin" size={18} /> : <Wand2 size={18} />}
               변환하기
             </button>
-            <button className="secondary-button" onClick={handleLocalRewrite} disabled={!sourceText.trim()}>
+            <button className="secondary-button" onClick={handleLocalRewrite} disabled={!sourceText.trim() || !baseText.trim()}>
               <RefreshCcw size={17} />
               로컬
             </button>
           </div>
+
+          <button className="history-button" onClick={handlePreviousRewrite} disabled={!sourceText.trim() || !snapshots.length}>
+            <History size={17} />
+            업데이트 전 베이스로 변환
+          </button>
         </article>
 
         <article className="panel panel-result">
           <PanelTitle
             icon={<Sparkles size={20} />}
             title="결과"
-            meta={result ? (result.provider === "openai" ? result.model ?? "OpenAI" : "로컬 엔진") : destinationLabel(options.destination)}
+            meta={result?.baseLabel ?? (result ? (result.provider === "openai" ? result.model ?? "OpenAI" : "로컬 엔진") : destinationLabel(options.destination))}
           />
 
           <div className="result-box">
@@ -353,6 +540,8 @@ function App() {
             <Metric label="질문 리듬" value={result ? `${resultProfile.questionRate}%` : "-"} />
             <Metric label="권면 밀도" value={result ? `${resultProfile.exhortationRate}%` : "-"} />
           </div>
+
+          <SnapshotList snapshots={snapshots} onSelect={(id) => setSelectedSnapshotId(id)} />
         </article>
       </section>
     </main>
@@ -380,12 +569,74 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
+function SourceList({
+  sources,
+  onToggle,
+  onDelete
+}: {
+  sources: StyleSource[];
+  onToggle: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <div className="source-list">
+      <div className="section-label">
+        <Database size={15} />
+        <span>소스 목록</span>
+      </div>
+      {sources.length ? (
+        sources.map((source) => (
+          <div className="source-item" key={source.id} data-disabled={!source.enabled}>
+            <div>
+              <strong>{source.name}</strong>
+              <span>
+                {source.kind.toUpperCase()} · {source.charCount.toLocaleString()}자 · {formatDate(source.addedAt)}
+              </span>
+            </div>
+            <button className="icon-button" title={source.enabled ? "비활성" : "활성"} onClick={() => onToggle(source.id)}>
+              {source.enabled ? <Eye size={16} /> : <EyeOff size={16} />}
+            </button>
+            <button className="icon-button" title="삭제" onClick={() => onDelete(source.id)}>
+              <Trash2 size={16} />
+            </button>
+          </div>
+        ))
+      ) : (
+        <div className="empty-list">직접 입력만 사용 중</div>
+      )}
+    </div>
+  );
+}
+
+function SnapshotList({ snapshots, onSelect }: { snapshots: StyleSnapshot[]; onSelect: (id: string) => void }) {
+  return (
+    <div className="snapshot-list">
+      <div className="section-label">
+        <Archive size={15} />
+        <span>베이스 기록</span>
+      </div>
+      {snapshots.length ? (
+        snapshots.slice(0, 4).map((snapshot) => (
+          <button key={snapshot.id} className="snapshot-item" onClick={() => onSelect(snapshot.id)}>
+            <strong>{snapshot.name}</strong>
+            <span>
+              {snapshot.charCount.toLocaleString()}자 · {snapshot.sourceCount}개 소스
+            </span>
+          </button>
+        ))
+      ) : (
+        <div className="empty-list">저장된 기록 없음</div>
+      )}
+    </div>
+  );
+}
+
 function ChipGroup({ title, items }: { title: string; items: string[] }) {
   return (
     <div className="chip-group">
       <span>{title}</span>
       <div>
-        {items.length ? items.map((item) => <em key={item}>{item}</em>) : <em>분석 대기</em>}
+        {items.length ? items.map((item, index) => <em key={`${item}-${index}`}>{item}</em>) : <em>분석 대기</em>}
       </div>
     </div>
   );
@@ -398,6 +649,41 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
       {label}
     </button>
   );
+}
+
+function normalizeImportedText(text: string) {
+  return text.replace(/\r/g, "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function getSourceKind(file: File): StyleSourceKind {
+  const name = file.name.toLowerCase();
+  if (file.type === "application/pdf" || name.endsWith(".pdf")) return "pdf";
+  if (name.endsWith(".md")) return "md";
+  return "txt";
+}
+
+function getVolumeStatus(chars: number) {
+  if (chars >= 50000) return { label: "풍부", progress: 100 };
+  if (chars >= 30000) return { label: "안정", progress: Math.round((chars / 50000) * 100) };
+  if (chars >= 8000) return { label: "시작", progress: Math.round((chars / 50000) * 100) };
+  return { label: "부족", progress: Math.max(4, Math.round((chars / 50000) * 100)) };
+}
+
+function createId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("ko-KR", { month: "2-digit", day: "2-digit" }).format(new Date(value));
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
 }
 
 export default App;

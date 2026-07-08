@@ -4,4 +4,5 @@ dist/
 .playwright-cli/
 output/
 .wrangler/
+tmp/
 npm-debug.log*
