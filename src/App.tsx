@@ -27,6 +27,7 @@ import type { Destination, QualityReport, RewriteResult, StyleOptions, StyleSnap
 const STORAGE_KEY = "change-my-voice-state-v2";
 const OLD_STORAGE_KEY = "change-my-voice-state-v1";
 const MAX_SNAPSHOTS = 20;
+const BLOG_ASSET_ORIGIN = "https://change-my-voice.pages.dev";
 
 const defaultSample = `사랑하는 성도 여러분, 오늘 우리는 주님 앞에서 다시 마음을 살펴보아야 합니다. 믿음은 멀리 있는 말이 아니라, 오늘 우리의 작은 순종 속에서 자라나는 생명입니다.
 
@@ -260,12 +261,7 @@ function App() {
   function handleDownload() {
     if (!result?.text) return;
     const blob = new Blob([result.text], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `내-말투-${new Date().toISOString().slice(0, 10)}.txt`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `내-말투-${todayStamp()}.txt`);
   }
 
   async function handleFileUpload(event: ChangeEvent<HTMLInputElement>) {
@@ -612,9 +608,21 @@ function BlogPreview({ scenes }: { scenes: BlogScene[] }) {
 
   return (
     <div className="blog-preview">
-      <div className="section-label">
-        <Sparkles size={15} />
-        <span>토다 그림책 미리보기</span>
+      <div className="blog-preview-title">
+        <div className="section-label">
+          <Sparkles size={15} />
+          <span>토다 그림책 미리보기</span>
+        </div>
+        <div className="blog-export-actions">
+          <button className="icon-text-button" onClick={() => void downloadBlogImage(scenes)}>
+            <Download size={16} />
+            PNG
+          </button>
+          <button className="icon-text-button" onClick={() => downloadBlogHtml(scenes)}>
+            <Download size={16} />
+            HTML
+          </button>
+        </div>
       </div>
       <div className="blog-scene-list">
         {scenes.map((scene, index) => (
@@ -704,6 +712,250 @@ function sheepMoodImage(mood: SheepMood) {
     celebrate: "08-celebrating.png"
   };
   return images[mood];
+}
+
+function downloadBlogHtml(scenes: BlogScene[]) {
+  const html = buildBlogHtml(scenes);
+  downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `토다-그림책-${todayStamp()}.html`);
+}
+
+async function downloadBlogImage(scenes: BlogScene[]) {
+  try {
+    const blob = await renderBlogImage(scenes);
+    downloadBlob(blob, `토다-그림책-${todayStamp()}.png`);
+  } catch {
+    window.alert("이미지 저장 중 문제가 생겼습니다. 잠시 후 다시 시도해 주세요.");
+  }
+}
+
+function buildBlogHtml(scenes: BlogScene[]) {
+  const cards = scenes
+    .map((scene, index) => {
+      const image = `${BLOG_ASSET_ORIGIN}/toda-sheep-pack/png/${sheepMoodImage(scene.mood)}`;
+      return `<article class="toda-scene" data-mood="${scene.mood}">
+  <div class="toda-character">
+    <img src="${image}" alt="${escapeHtml(scene.label)}" width="112" height="112" />
+    <span>${escapeHtml(scene.label)}</span>
+  </div>
+  <p>${escapeHtml(scene.text)}</p>
+  <em>${String(index + 1).padStart(2, "0")}</em>
+</article>`;
+    })
+    .join("\n");
+
+  return `<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>토다 그림책</title>
+  <style>
+    body { margin: 0; background: #fffdfb; color: #1f2b2c; font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+    .toda-picturebook { max-width: 760px; margin: 0 auto; padding: 18px; display: grid; gap: 12px; }
+    .toda-scene { position: relative; min-height: 118px; display: grid; grid-template-columns: 116px minmax(0, 1fr); align-items: center; gap: 16px; overflow: hidden; padding: 12px 44px 12px 12px; border: 1px solid #d8dfdb; border-radius: 8px; background: linear-gradient(135deg, rgba(255, 253, 251, 0.98), rgba(249, 250, 247, 0.9)); box-sizing: border-box; }
+    .toda-scene[data-mood="sad"] { background: linear-gradient(135deg, rgba(245, 223, 230, 0.62), rgba(255, 253, 251, 0.96)); }
+    .toda-scene[data-mood="praying"], .toda-scene[data-mood="hopeful"] { background: linear-gradient(135deg, rgba(223, 243, 241, 0.72), rgba(255, 253, 251, 0.96)); }
+    .toda-scene[data-mood="celebrate"] { background: linear-gradient(135deg, rgba(255, 250, 242, 0.95), rgba(223, 243, 241, 0.52)); }
+    .toda-character { display: grid; justify-items: center; gap: 4px; }
+    .toda-character img { width: 112px; height: 112px; object-fit: contain; display: block; }
+    .toda-character span { color: #667274; font-size: 12px; line-height: 1.25; text-align: center; }
+    .toda-scene p { margin: 0; color: #1f2b2c; font-size: 18px; line-height: 1.75; word-break: keep-all; overflow-wrap: anywhere; }
+    .toda-scene em { position: absolute; right: 12px; bottom: 10px; color: rgba(105, 113, 117, 0.58); font-style: normal; font-size: 13px; }
+    @media (max-width: 520px) { .toda-picturebook { padding: 12px; } .toda-scene { grid-template-columns: 92px minmax(0, 1fr); gap: 10px; padding-right: 34px; } .toda-character img { width: 88px; height: 88px; } .toda-scene p { font-size: 16px; } }
+  </style>
+</head>
+<body>
+  <main class="toda-picturebook">
+${cards}
+  </main>
+</body>
+</html>`;
+}
+
+async function renderBlogImage(scenes: BlogScene[]) {
+  const width = 920;
+  const padding = 28;
+  const gap = 16;
+  const imageSize = 126;
+  const labelHeight = 22;
+  const leftColumn = 150;
+  const rightPadding = 58;
+  const textX = padding + leftColumn + 18;
+  const textMaxWidth = width - textX - padding - rightPadding;
+  const lineHeight = 34;
+  const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+  const measureCanvas = document.createElement("canvas");
+  const measureContext = measureCanvas.getContext("2d");
+  if (!measureContext) throw new Error("Canvas is not available.");
+  measureContext.font = "23px Malgun Gothic, Apple SD Gothic Neo, sans-serif";
+
+  const prepared = scenes.map((scene) => {
+    const lines = wrapCanvasText(measureContext, scene.text, textMaxWidth);
+    const cardHeight = Math.max(164, lines.length * lineHeight + 58, imageSize + labelHeight + 36);
+    return { scene, lines, cardHeight };
+  });
+  const height = padding * 2 + prepared.reduce((sum, item) => sum + item.cardHeight, 0) + gap * Math.max(0, prepared.length - 1);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(width * pixelRatio);
+  canvas.height = Math.round(height * pixelRatio);
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Canvas is not available.");
+  context.scale(pixelRatio, pixelRatio);
+  context.fillStyle = "#fffdfb";
+  context.fillRect(0, 0, width, height);
+  context.font = "23px Malgun Gothic, Apple SD Gothic Neo, sans-serif";
+  context.textBaseline = "top";
+
+  const images = await Promise.all(prepared.map(({ scene }) => loadImage(`/toda-sheep-pack/png/${sheepMoodImage(scene.mood)}`)));
+  let y = padding;
+  prepared.forEach(({ scene, lines, cardHeight }, index) => {
+    drawBlogCard(context, scene, lines, images[index], {
+      x: padding,
+      y,
+      width: width - padding * 2,
+      height: cardHeight,
+      imageSize,
+      lineHeight,
+      leftColumn,
+      textX,
+      textMaxWidth,
+      index
+    });
+    y += cardHeight + gap;
+  });
+
+  return canvasToBlob(canvas);
+}
+
+function drawBlogCard(
+  context: CanvasRenderingContext2D,
+  scene: BlogScene,
+  lines: string[],
+  image: HTMLImageElement,
+  layout: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    imageSize: number;
+    lineHeight: number;
+    leftColumn: number;
+    textX: number;
+    textMaxWidth: number;
+    index: number;
+  }
+) {
+  const gradient = context.createLinearGradient(layout.x, layout.y, layout.x + layout.width, layout.y + layout.height);
+  const [start, end] = blogSceneColors(scene.mood);
+  gradient.addColorStop(0, start);
+  gradient.addColorStop(1, end);
+  roundedRect(context, layout.x, layout.y, layout.width, layout.height, 12);
+  context.fillStyle = gradient;
+  context.fill();
+  context.strokeStyle = "#d8dfdb";
+  context.lineWidth = 1;
+  context.stroke();
+
+  const imageX = layout.x + Math.round((layout.leftColumn - layout.imageSize) / 2);
+  const imageY = layout.y + 20;
+  context.drawImage(image, imageX, imageY, layout.imageSize, layout.imageSize);
+  context.fillStyle = "#667274";
+  context.font = "14px Malgun Gothic, Apple SD Gothic Neo, sans-serif";
+  context.textAlign = "center";
+  context.fillText(scene.label, layout.x + layout.leftColumn / 2, imageY + layout.imageSize + 4, layout.leftColumn - 8);
+
+  context.fillStyle = "#1f2b2c";
+  context.font = "23px Malgun Gothic, Apple SD Gothic Neo, sans-serif";
+  context.textAlign = "left";
+  const textY = layout.y + Math.max(24, Math.round((layout.height - lines.length * layout.lineHeight) / 2));
+  lines.forEach((line, lineIndex) => {
+    context.fillText(line, layout.textX, textY + lineIndex * layout.lineHeight, layout.textMaxWidth);
+  });
+
+  context.fillStyle = "rgba(105, 113, 117, 0.58)";
+  context.font = "16px Malgun Gothic, Apple SD Gothic Neo, sans-serif";
+  context.textAlign = "right";
+  context.fillText(String(layout.index + 1).padStart(2, "0"), layout.x + layout.width - 14, layout.y + layout.height - 28);
+}
+
+function blogSceneColors(mood: SheepMood) {
+  if (mood === "sad") return ["rgba(245, 223, 230, 0.9)", "rgba(255, 253, 251, 0.98)"];
+  if (mood === "praying" || mood === "hopeful") return ["rgba(223, 243, 241, 0.95)", "rgba(255, 253, 251, 0.98)"];
+  if (mood === "celebrate") return ["rgba(255, 250, 242, 0.98)", "rgba(223, 243, 241, 0.82)"];
+  return ["rgba(255, 253, 251, 0.98)", "rgba(249, 250, 247, 0.94)"];
+}
+
+function wrapCanvasText(context: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  const lines: string[] = [];
+  let current = "";
+  for (const char of Array.from(text.replace(/\s+/g, " ").trim())) {
+    const candidate = current + char;
+    if (current && context.measureText(candidate).width > maxWidth) {
+      lines.push(current.trimEnd());
+      current = char.trimStart();
+    } else {
+      current = candidate;
+    }
+  }
+  if (current.trim()) lines.push(current.trim());
+  return lines.length ? lines : [text];
+}
+
+function roundedRect(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
+  const safeRadius = Math.min(radius, width / 2, height / 2);
+  context.beginPath();
+  context.moveTo(x + safeRadius, y);
+  context.lineTo(x + width - safeRadius, y);
+  context.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
+  context.lineTo(x + width, y + height - safeRadius);
+  context.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
+  context.lineTo(x + safeRadius, y + height);
+  context.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
+  context.lineTo(x, y + safeRadius);
+  context.quadraticCurveTo(x, y, x + safeRadius, y);
+  context.closePath();
+}
+
+function loadImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = src;
+  });
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement) {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("Could not create image."));
+    }, "image/png");
+  });
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function todayStamp() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function QualityPanel({ report }: { report?: QualityReport }) {

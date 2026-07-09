@@ -220,6 +220,21 @@ h1 {
   gap: 9px;
 }
 
+.blog-preview-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.blog-export-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .blog-scene-list {
   display: grid;
   gap: 10px;
@@ -852,6 +867,15 @@ input[type="range"] {
   .fingerprint,
   .score-grid {
     grid-template-columns: 1fr;
+  }
+
+  .blog-preview-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .blog-export-actions {
+    justify-content: flex-start;
   }
 
   .blog-scene {
