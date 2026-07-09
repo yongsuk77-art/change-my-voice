@@ -633,86 +633,8 @@ function BlogPreview({ scenes }: { scenes: BlogScene[] }) {
 }
 
 function TodaSheep({ mood }: { mood: SheepMood }) {
-  const isSad = mood === "sad";
-  const isPraying = mood === "praying";
-  const isSurprised = mood === "surprised";
-  const isCelebrate = mood === "celebrate";
-  const isReading = mood === "reading";
-
-  return (
-    <svg className="toda-sheep" viewBox="0 0 140 140" role="img" aria-label={`토다 양 ${mood}`}>
-      <circle className="sheep-glow" cx="70" cy="72" r="58" />
-      {isCelebrate ? (
-        <g className="sheep-confetti">
-          <path d="M25 25l8 6" />
-          <path d="M111 25l-7 7" />
-          <path d="M116 58l10 1" />
-          <path d="M18 59l-9 3" />
-        </g>
-      ) : null}
-      {mood === "hopeful" ? <path className="sheep-star" d="M112 34l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" /> : null}
-      <ellipse className="sheep-ear" cx="37" cy="70" rx="14" ry="20" />
-      <ellipse className="sheep-ear right" cx="103" cy="70" rx="14" ry="20" />
-      <g className="sheep-wool">
-        <circle cx="45" cy="46" r="18" />
-        <circle cx="63" cy="36" r="19" />
-        <circle cx="83" cy="38" r="18" />
-        <circle cx="98" cy="52" r="18" />
-        <circle cx="95" cy="74" r="20" />
-        <circle cx="72" cy="86" r="24" />
-        <circle cx="49" cy="75" r="21" />
-        <circle cx="39" cy="57" r="17" />
-      </g>
-      <path className="sheep-face" d="M48 58c0-21 44-21 44 0v22c0 16-9 26-22 26S48 96 48 80z" />
-      <path className="sheep-scarf" d="M48 98c12 10 35 10 47 0l8 12c-19 12-47 12-63 0z" />
-      <path className="sheep-scarf-tail" d="M83 104l18 19 4-21z" />
-      {isSurprised ? (
-        <>
-          <circle className="sheep-eye" cx="60" cy="70" r="4.5" />
-          <circle className="sheep-eye" cx="80" cy="70" r="4.5" />
-          <ellipse className="sheep-mouth-fill" cx="70" cy="86" rx="5" ry="7" />
-        </>
-      ) : isSad ? (
-        <>
-          <path className="sheep-eye-line" d="M55 72q6-6 12 0" />
-          <path className="sheep-eye-line" d="M73 72q6-6 12 0" />
-          <path className="sheep-mouth" d="M62 91q8-7 16 0" />
-          <path className="sheep-tear" d="M86 77c5 6 5 10 0 12-5-2-5-6 0-12z" />
-        </>
-      ) : isPraying ? (
-        <>
-          <path className="sheep-eye-line" d="M55 70q6 5 12 0" />
-          <path className="sheep-eye-line" d="M73 70q6 5 12 0" />
-          <path className="sheep-mouth" d="M64 86q6 4 12 0" />
-        </>
-      ) : (
-        <>
-          <path className="sheep-eye-line" d="M55 70q6 5 12 0" />
-          <path className="sheep-eye-line" d="M73 70q6 5 12 0" />
-          <path className="sheep-mouth" d={isCelebrate ? "M59 85q11 12 22 0" : "M62 84q8 7 16 0"} />
-        </>
-      )}
-      <circle className="sheep-blush" cx="51" cy="82" r="5" />
-      <circle className="sheep-blush" cx="89" cy="82" r="5" />
-      {isPraying ? (
-        <g className="sheep-hands">
-          <path d="M56 103c8-12 18-12 26 0" />
-          <path d="M63 99v18" />
-          <path d="M75 99v18" />
-        </g>
-      ) : null}
-      {isReading ? (
-        <g className="sheep-book">
-          <path d="M38 101c12-5 22-3 32 5v21c-10-8-20-10-32-5z" />
-          <path d="M70 106c10-8 20-10 32-5v21c-12-5-22-3-32 5z" />
-          <path d="M70 106v21" />
-        </g>
-      ) : null}
-      {mood === "comfort" ? (
-        <path className="sheep-heart" d="M104 90c-8-8-22 1-11 13l11 10 11-10c11-12-3-21-11-13z" />
-      ) : null}
-    </svg>
-  );
+  const image = sheepMoodImage(mood);
+  return <img className="toda-sheep" src={`/toda-sheep-pack/png/${image}`} alt={`토다 양 ${mood}`} />;
 }
 
 function buildBlogScenes(text: string): BlogScene[] {
@@ -768,6 +690,20 @@ function sheepMoodLabel(mood: SheepMood) {
     celebrate: "기뻐하는 토다 양"
   };
   return labels[mood];
+}
+
+function sheepMoodImage(mood: SheepMood) {
+  const images: Record<SheepMood, string> = {
+    peaceful: "01-peaceful.png",
+    sad: "02-despair.png",
+    praying: "03-praying.png",
+    surprised: "04-surprised.png",
+    hopeful: "05-hopeful.png",
+    reading: "06-reading-bible.png",
+    comfort: "07-comforting.png",
+    celebrate: "08-celebrating.png"
+  };
+  return images[mood];
 }
 
 function QualityPanel({ report }: { report?: QualityReport }) {

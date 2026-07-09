@@ -287,99 +287,10 @@ h1 {
 }
 
 .toda-sheep {
-  width: 94px;
-  height: 94px;
-  overflow: visible;
-}
-
-.sheep-glow {
-  fill: rgba(223, 243, 241, 0.7);
-}
-
-.sheep-ear {
-  fill: #e9c9c5;
-  stroke: #6e5b50;
-  stroke-width: 3;
-}
-
-.sheep-ear.right {
-  transform-origin: 103px 70px;
-}
-
-.sheep-wool circle {
-  fill: #fff9ef;
-  stroke: #6e5b50;
-  stroke-width: 3;
-}
-
-.sheep-face {
-  fill: #f8ddcf;
-  stroke: #6e5b50;
-  stroke-width: 3;
-}
-
-.sheep-scarf {
-  fill: var(--teal);
-  stroke: #065f62;
-  stroke-width: 3;
-}
-
-.sheep-scarf-tail {
-  fill: #0b9a9e;
-  stroke: #065f62;
-  stroke-width: 3;
-}
-
-.sheep-eye {
-  fill: #312723;
-}
-
-.sheep-eye-line,
-.sheep-mouth,
-.sheep-hands path,
-.sheep-confetti path {
-  fill: none;
-  stroke: #312723;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 3;
-}
-
-.sheep-mouth-fill {
-  fill: #8b2f48;
-}
-
-.sheep-blush {
-  fill: rgba(220, 111, 126, 0.42);
-}
-
-.sheep-tear {
-  fill: #7cc7df;
-}
-
-.sheep-star {
-  fill: #f7c85c;
-  stroke: #8a6820;
-  stroke-linejoin: round;
-  stroke-width: 2;
-}
-
-.sheep-book path {
-  fill: #fffdfb;
-  stroke: #6e5b50;
-  stroke-linejoin: round;
-  stroke-width: 3;
-}
-
-.sheep-heart {
-  fill: var(--wine);
-  stroke: #6e5b50;
-  stroke-linejoin: round;
-  stroke-width: 2;
-}
-
-.sheep-confetti path {
-  stroke: var(--gold);
+  width: 112px;
+  height: 112px;
+  display: block;
+  object-fit: contain;
 }
 
 .panel-actions,
