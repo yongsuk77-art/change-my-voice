@@ -10,8 +10,10 @@ import {
   FileText,
   Gauge,
   History,
+  ImagePlus,
   Loader2,
   Mic2,
+  Plus,
   RefreshCcw,
   Save,
   Sparkles,
@@ -51,6 +53,8 @@ function App() {
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(null);
   const [sourceText, setSourceText] = useState(defaultSource);
   const [result, setResult] = useState<RewriteResult | null>(null);
+  const [blogScenes, setBlogScenes] = useState<BlogScene[]>([]);
+  const [blogDraftKey, setBlogDraftKey] = useState("");
   const [options, setOptions] = useState<StyleOptions>({
     intensity: 80,
     destination: "sermon",
@@ -78,6 +82,8 @@ function App() {
       setSourceText(parsed.sourceText || defaultSource);
       setOptions((current) => ({ ...current, ...parsed.options }));
       setResult(parsed.result || null);
+      setBlogScenes(Array.isArray(parsed.blogScenes) ? parsed.blogScenes : []);
+      setBlogDraftKey(parsed.blogDraftKey || "");
     } catch {
       localStorage.removeItem(STORAGE_KEY);
     }
@@ -108,13 +114,15 @@ function App() {
           selectedSnapshotId,
           sourceText,
           options,
-          result
+          result,
+          blogScenes,
+          blogDraftKey
         })
       );
     } catch {
       setError("브라우저 저장 공간이 부족합니다. 큰 PDF는 일부 소스를 삭제한 뒤 다시 추가해 주세요.");
     }
-  }, [manualText, sources, snapshots, selectedSnapshotId, sourceText, options, result]);
+  }, [manualText, sources, snapshots, selectedSnapshotId, sourceText, options, result, blogScenes, blogDraftKey]);
 
   useEffect(() => {
     fetch("/api/health")
@@ -126,13 +134,30 @@ function App() {
   const profile = useMemo(() => analyzeStyle(baseText), [baseText]);
   const resultProfile = useMemo(() => analyzeStyle(result?.text ?? ""), [result]);
   const matchScore = useMemo(() => (result?.text ? scoreMatch(result.text, profile) : 0), [result, profile]);
-  const blogScenes = useMemo(() => buildBlogScenes(result?.text ?? ""), [result?.text]);
   const isBlogResult = Boolean(result?.text && (result.destination ?? options.destination) === "blog");
   const sourceChars = sourceText.replace(/\s/g, "").length;
   const baseChars = baseText.replace(/\s/g, "").length;
   const currentChars = currentBaseText.replace(/\s/g, "").length;
   const enabledSourceCount = sources.filter((source) => source.enabled).length + (manualText.trim() ? 1 : 0);
   const volume = getVolumeStatus(baseChars);
+
+  useEffect(() => {
+    const destination = result?.destination ?? options.destination;
+    const nextKey = result?.text && destination === "blog" ? createBlogDraftKey(result.text, destination) : "";
+
+    if (!nextKey) {
+      if (blogDraftKey || blogScenes.length) {
+        setBlogScenes([]);
+        setBlogDraftKey("");
+      }
+      return;
+    }
+
+    if (nextKey !== blogDraftKey) {
+      setBlogScenes(buildBlogScenes(result?.text ?? ""));
+      setBlogDraftKey(nextKey);
+    }
+  }, [blogDraftKey, blogScenes.length, options.destination, result?.destination, result?.text]);
 
   async function rewriteWithBase(styleBaseText: string, label: string) {
     setIsLoading(true);
@@ -576,7 +601,7 @@ function App() {
             </button>
           </div>
 
-          {isBlogResult ? <BlogPreview scenes={blogScenes} /> : null}
+          {isBlogResult ? <BlogPreview scenes={blogScenes} onScenesChange={setBlogScenes} /> : null}
 
           <div className="score-grid">
             <Metric label="문체 일치" value={result ? `${matchScore}%` : "-"} />
@@ -596,6 +621,17 @@ function App() {
 
 type SheepMood = "peaceful" | "sad" | "praying" | "surprised" | "hopeful" | "reading" | "comfort" | "celebrate";
 
+const sheepMoodOptions: Array<{ value: SheepMood; label: string }> = [
+  { value: "peaceful", label: "평안한 토다 양" },
+  { value: "sad", label: "절망한 토다 양" },
+  { value: "praying", label: "기도하는 토다 양" },
+  { value: "surprised", label: "놀란 토다 양" },
+  { value: "hopeful", label: "소망을 보는 토다 양" },
+  { value: "reading", label: "말씀 읽는 토다 양" },
+  { value: "comfort", label: "위로하는 토다 양" },
+  { value: "celebrate", label: "기뻐하는 토다 양" }
+];
+
 type BlogScene = {
   id: string;
   text: string;
@@ -606,17 +642,89 @@ type BlogScene = {
   };
 };
 
-function BlogPreview({ scenes }: { scenes: BlogScene[] }) {
+function BlogPreview({ scenes, onScenesChange }: { scenes: BlogScene[]; onScenesChange: (scenes: BlogScene[]) => void }) {
   if (!scenes.length) return null;
+
+  function updateScene(id: string, updater: (scene: BlogScene) => BlogScene) {
+    onScenesChange(scenes.map((scene) => (scene.id === id ? updater(scene) : scene)));
+  }
+
+  function updateSceneText(id: string, text: string) {
+    updateScene(id, (scene) => ({
+      ...scene,
+      text,
+      mood: detectSheepMood(text, 0)
+    }));
+  }
+
+  function addParagraph(afterIndex: number) {
+    const nextScenes = [...scenes];
+    nextScenes.splice(afterIndex + 1, 0, {
+      id: createId(),
+      text: "새 문단을 입력하세요.",
+      mood: "peaceful"
+    });
+    onScenesChange(nextScenes);
+  }
+
+  function removeParagraph(id: string) {
+    if (scenes.length <= 1) return;
+    onScenesChange(scenes.filter((scene) => scene.id !== id));
+  }
+
+  function addIllustration(id: string) {
+    updateScene(id, (scene) => {
+      const mood = detectSheepMood(scene.text, 0);
+      return {
+        ...scene,
+        mood,
+        illustration: {
+          mood,
+          label: sheepMoodLabel(mood)
+        }
+      };
+    });
+  }
+
+  function updateIllustration(id: string, mood: SheepMood) {
+    updateScene(id, (scene) => ({
+      ...scene,
+      mood,
+      illustration: {
+        mood,
+        label: sheepMoodLabel(mood)
+      }
+    }));
+  }
+
+  function removeIllustration(id: string) {
+    updateScene(id, (scene) => {
+      const nextScene = { ...scene };
+      delete nextScene.illustration;
+      return nextScene;
+    });
+  }
+
+  function autoArrangeIllustrations() {
+    onScenesChange(placeBlogIllustrations(scenes.map((scene, index) => ({ ...scene, mood: detectSheepMood(scene.text, index), illustration: undefined }))));
+  }
 
   return (
     <div className="blog-preview">
       <div className="blog-preview-title">
         <div className="section-label">
           <Sparkles size={15} />
-          <span>토다 그림책 미리보기</span>
+          <span>토다 그림책 편집</span>
         </div>
         <div className="blog-export-actions">
+          <button className="icon-text-button" onClick={() => addParagraph(scenes.length - 1)}>
+            <Plus size={16} />
+            문단
+          </button>
+          <button className="icon-text-button" onClick={autoArrangeIllustrations}>
+            <RefreshCcw size={16} />
+            자동
+          </button>
           <button className="icon-text-button" onClick={() => void downloadBlogImage(scenes)}>
             <Download size={16} />
             PNG
@@ -630,15 +738,55 @@ function BlogPreview({ scenes }: { scenes: BlogScene[] }) {
       <div className="blog-scene-list">
         {scenes.map((scene, index) => (
           <div className="blog-flow-item" key={scene.id}>
-            <article className="blog-scene">
-              <p>{scene.text}</p>
-            </article>
+            <div className="blog-edit-toolbar">
+              <span>{String(index + 1).padStart(2, "0")}</span>
+              <div>
+                <button className="text-button" onClick={() => addParagraph(index)}>
+                  <Plus size={15} />
+                  아래 문단
+                </button>
+                <button className="icon-button" title="문단 삭제" onClick={() => removeParagraph(scene.id)} disabled={scenes.length <= 1}>
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </div>
+            <textarea
+              className="blog-paragraph-input"
+              value={scene.text}
+              rows={Math.max(2, Math.ceil(scene.text.length / 42))}
+              onChange={(event) => updateSceneText(scene.id, event.target.value)}
+              aria-label={`${index + 1}번 블로그 문단`}
+            />
             {scene.illustration ? (
               <figure className="blog-illustration" data-mood={scene.illustration.mood}>
                 <TodaSheep mood={scene.illustration.mood} />
-                <figcaption>{scene.illustration.label}</figcaption>
+                <figcaption>
+                  <select
+                    className="blog-mood-select"
+                    value={scene.illustration.mood}
+                    onChange={(event) => updateIllustration(scene.id, event.target.value as SheepMood)}
+                    aria-label={`${index + 1}번 문단 캐릭터 변경`}
+                  >
+                    {sheepMoodOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button className="text-button" onClick={() => removeIllustration(scene.id)}>
+                    <Trash2 size={14} />
+                    그림 삭제
+                  </button>
+                </figcaption>
               </figure>
-            ) : null}
+            ) : (
+              <div className="blog-add-illustration">
+                <button className="text-button" onClick={() => addIllustration(scene.id)}>
+                  <ImagePlus size={15} />
+                  여기에 그림 추가
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -783,6 +931,14 @@ function assessSheepMood(text: string): { mood: SheepMood; score: number } {
 
 function keywordScore(text: string, keywords: string[]) {
   return keywords.reduce((score, keyword) => score + (text.includes(keyword) ? 1 : 0), 0);
+}
+
+function createBlogDraftKey(text: string, destination: Destination) {
+  let hash = 0;
+  for (const char of text) {
+    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  }
+  return `${destination}:${text.length}:${hash}`;
 }
 
 function sheepMoodLabel(mood: SheepMood) {

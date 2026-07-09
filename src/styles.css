@@ -238,23 +238,63 @@ h1 {
 .blog-scene-list {
   display: grid;
   gap: 0;
-  padding: 18px;
+  padding: 12px 18px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fffdfb;
 }
 
-.blog-scene {
-  padding: 0;
+.blog-flow-item {
+  padding: 12px 0 14px;
+  border-bottom: 1px solid rgba(216, 223, 219, 0.72);
 }
 
-.blog-scene p {
-  margin: 0 0 14px;
+.blog-flow-item:last-child {
+  border-bottom: 0;
+}
+
+.blog-edit-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.blog-edit-toolbar > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.blog-edit-toolbar > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.blog-paragraph-input {
+  width: 100%;
+  min-height: 74px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  resize: vertical;
+  outline: none;
+  padding: 8px 10px;
+  background: transparent;
   color: var(--ink);
   font-size: 16px;
   line-height: 1.85;
+  letter-spacing: 0;
   overflow-wrap: anywhere;
   word-break: keep-all;
+}
+
+.blog-paragraph-input:focus {
+  border-color: rgba(8, 127, 131, 0.55);
+  background: rgba(223, 243, 241, 0.26);
+  box-shadow: 0 0 0 3px rgba(8, 127, 131, 0.09);
 }
 
 .blog-illustration {
@@ -266,6 +306,11 @@ h1 {
 }
 
 .blog-illustration figcaption {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.35;
@@ -275,6 +320,21 @@ h1 {
 .blog-illustration .toda-sheep {
   width: 132px;
   height: 132px;
+}
+
+.blog-mood-select {
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.blog-add-illustration {
+  display: flex;
+  justify-content: center;
+  margin: 4px 0 2px;
 }
 
 .toda-sheep {
@@ -858,7 +918,7 @@ input[type="range"] {
     padding: 14px;
   }
 
-  .blog-scene p {
+  .blog-paragraph-input {
     font-size: 14px;
   }
 
