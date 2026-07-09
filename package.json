@@ -25,6 +25,7 @@
   "devDependencies": {
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "sharp": "latest",
     "wrangler": "^4.107.1"
   }
 }
