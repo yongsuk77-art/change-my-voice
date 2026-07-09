@@ -237,68 +237,44 @@ h1 {
 
 .blog-scene-list {
   display: grid;
-  gap: 10px;
+  gap: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffdfb;
 }
 
 .blog-scene {
-  position: relative;
-  min-height: 118px;
-  display: grid;
-  grid-template-columns: 104px minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
-  overflow: hidden;
-  padding: 10px 40px 10px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background:
-    linear-gradient(135deg, rgba(255, 253, 251, 0.98), rgba(249, 250, 247, 0.9)),
-    var(--surface-soft);
-}
-
-.blog-scene[data-mood="sad"] {
-  background: linear-gradient(135deg, rgba(245, 223, 230, 0.62), rgba(255, 253, 251, 0.96));
-}
-
-.blog-scene[data-mood="praying"],
-.blog-scene[data-mood="hopeful"] {
-  background: linear-gradient(135deg, rgba(223, 243, 241, 0.72), rgba(255, 253, 251, 0.96));
-}
-
-.blog-scene[data-mood="celebrate"] {
-  background: linear-gradient(135deg, rgba(255, 250, 242, 0.95), rgba(223, 243, 241, 0.52));
+  padding: 0;
 }
 
 .blog-scene p {
-  margin: 0;
+  margin: 0 0 14px;
   color: var(--ink);
-  font-size: 15px;
-  line-height: 1.72;
+  font-size: 16px;
+  line-height: 1.85;
   overflow-wrap: anywhere;
   word-break: keep-all;
 }
 
-.blog-scene em {
-  position: absolute;
-  right: 10px;
-  bottom: 8px;
-  color: rgba(105, 113, 117, 0.5);
-  font-style: normal;
-  font-size: 12px;
-}
-
-.sheep-stage {
+.blog-illustration {
   display: grid;
   justify-items: center;
-  gap: 4px;
+  gap: 5px;
+  margin: 2px 0 22px;
+  padding: 4px 0 0;
 }
 
-.sheep-stage span {
-  max-width: 100%;
+.blog-illustration figcaption {
   color: var(--muted);
-  font-size: 11px;
-  line-height: 1.25;
+  font-size: 12px;
+  line-height: 1.35;
   text-align: center;
+}
+
+.blog-illustration .toda-sheep {
+  width: 132px;
+  height: 132px;
 }
 
 .toda-sheep {
@@ -878,14 +854,16 @@ input[type="range"] {
     justify-content: flex-start;
   }
 
-  .blog-scene {
-    grid-template-columns: 1fr;
-    justify-items: center;
-    padding: 12px;
-    text-align: center;
+  .blog-scene-list {
+    padding: 14px;
   }
 
   .blog-scene p {
     font-size: 14px;
+  }
+
+  .blog-illustration .toda-sheep {
+    width: 118px;
+    height: 118px;
   }
 }

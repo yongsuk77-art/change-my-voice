@@ -600,7 +600,10 @@ type BlogScene = {
   id: string;
   text: string;
   mood: SheepMood;
-  label: string;
+  illustration?: {
+    mood: SheepMood;
+    label: string;
+  };
 };
 
 function BlogPreview({ scenes }: { scenes: BlogScene[] }) {
@@ -626,14 +629,17 @@ function BlogPreview({ scenes }: { scenes: BlogScene[] }) {
       </div>
       <div className="blog-scene-list">
         {scenes.map((scene, index) => (
-          <article className="blog-scene" data-mood={scene.mood} key={scene.id}>
-            <div className="sheep-stage">
-              <TodaSheep mood={scene.mood} />
-              <span>{scene.label}</span>
-            </div>
-            <p>{scene.text}</p>
-            <em>{String(index + 1).padStart(2, "0")}</em>
-          </article>
+          <div className="blog-flow-item" key={scene.id}>
+            <article className="blog-scene">
+              <p>{scene.text}</p>
+            </article>
+            {scene.illustration ? (
+              <figure className="blog-illustration" data-mood={scene.illustration.mood}>
+                <TodaSheep mood={scene.illustration.mood} />
+                <figcaption>{scene.illustration.label}</figcaption>
+              </figure>
+            ) : null}
+          </div>
         ))}
       </div>
     </div>
@@ -646,44 +652,137 @@ function TodaSheep({ mood }: { mood: SheepMood }) {
 }
 
 function buildBlogScenes(text: string): BlogScene[] {
-  const blocks = text
+  const paragraphs = text
     .split(/\n{2,}/)
     .map((block) => block.trim())
     .filter(Boolean)
-    .filter((block) => !/^(#{1,6}\s+|[-*+]\s+|\d+\.\s+)/.test(block));
+    .map((block) => block.replace(/^(#{1,6}\s+|[-*+]\s+|\d+\.\s+)/, "").trim())
+    .filter(Boolean)
+    .flatMap((block) => groupBlogSentences(block));
 
-  return blocks.flatMap((block, blockIndex) => {
-    const pieces = block.length > 130 ? splitPreviewSentences(block) : [block];
-    return pieces.map((piece, pieceIndex) => {
-      const mood = detectSheepMood(piece, blockIndex + pieceIndex);
-      return {
-        id: `${blockIndex}-${pieceIndex}-${piece.slice(0, 12)}`,
-        text: piece,
-        mood,
-        label: sheepMoodLabel(mood)
-      };
-    });
+  const scenes = paragraphs.map((paragraph, index) => {
+    const mood = detectSheepMood(paragraph, index);
+    return {
+      id: `${index}-${paragraph.slice(0, 16)}`,
+      text: paragraph,
+      mood
+    };
   });
+
+  return placeBlogIllustrations(scenes);
 }
 
-function splitPreviewSentences(text: string) {
-  return (
+function groupBlogSentences(text: string) {
+  const sentences =
     text
       .match(/[^.!?。！？]+[.!?。！？]?/g)
       ?.map((sentence) => sentence.trim())
-      .filter(Boolean) ?? [text]
-  );
+      .filter(Boolean) ?? [text];
+  const groups: string[] = [];
+  let current = "";
+
+  for (const sentence of sentences) {
+    const candidate = current ? `${current} ${sentence}` : sentence;
+    if (current && candidate.length > 115) {
+      groups.push(current);
+      current = sentence;
+    } else {
+      current = candidate;
+    }
+  }
+
+  if (current) groups.push(current);
+  return groups;
 }
 
 function detectSheepMood(text: string, index: number): SheepMood {
-  if (/절망|낙심|슬픔|아픔|눈물|울었|두려|무너|외로|상처|고난|탄식|길도 보이지|보이지 않았/.test(text)) return "sad";
-  if (/기도|간구|무릎|주님께|하나님께|아멘/.test(text)) return "praying";
-  if (/감사|기쁨|찬양|축복|웃|즐거|은혜/.test(text)) return "celebrate";
-  if (/놀라|뜻밖|갑자기|깨달|처음|새삼|보았/.test(text)) return "surprised";
-  if (/소망|희망|회복|다시 일어|빛|새롭게|기대|살아/.test(text)) return "hopeful";
-  if (/말씀|성경|읽|묵상|배우|기록|본문|에스라|토라/.test(text)) return "reading";
-  if (/위로|함께|품|돌보|사랑|격려|안아|공동체/.test(text)) return "comfort";
+  const assessment = assessSheepMood(text);
+  if (assessment.score > 0) return assessment.mood;
   return index % 5 === 0 ? "peaceful" : "hopeful";
+}
+
+function placeBlogIllustrations(scenes: BlogScene[]) {
+  if (!scenes.length) return scenes;
+
+  const maxImages = Math.min(4, Math.max(1, Math.ceil(scenes.length / 4)));
+  const minGap = scenes.length > 6 ? 3 : 2;
+  let lastIllustrationIndex = -99;
+  let imageCount = 0;
+  const illustrated = scenes.map((scene, index) => {
+    const assessment = assessSheepMood(scene.text);
+    const shouldIllustrate =
+      assessment.score >= 2 && imageCount < maxImages && index - lastIllustrationIndex >= minGap && index !== 0;
+
+    if (!shouldIllustrate) return scene;
+
+    lastIllustrationIndex = index;
+    imageCount += 1;
+    return {
+      ...scene,
+      mood: assessment.mood,
+      illustration: {
+        mood: assessment.mood,
+        label: sheepMoodLabel(assessment.mood)
+      }
+    };
+  });
+
+  if (imageCount === 0) {
+    const fallbackIndex = scenes.length === 1 ? 0 : Math.min(scenes.length - 1, Math.max(1, Math.floor(scenes.length * 0.58)));
+    const mood = detectSheepMood(scenes[fallbackIndex].text, fallbackIndex);
+    illustrated[fallbackIndex] = {
+      ...illustrated[fallbackIndex],
+      mood,
+      illustration: {
+        mood,
+        label: sheepMoodLabel(mood)
+      }
+    };
+  }
+
+  return illustrated;
+}
+
+function assessSheepMood(text: string): { mood: SheepMood; score: number } {
+  const candidates: Array<{ mood: SheepMood; score: number }> = [
+    {
+      mood: "sad",
+      score: keywordScore(text, ["절망", "낙심", "슬픔", "아픔", "눈물", "울었", "두려", "무너", "외로", "상처", "고난", "탄식", "어둠"])
+    },
+    {
+      mood: "praying",
+      score: keywordScore(text, ["기도", "간구", "무릎", "주님께", "하나님께", "아멘", "예배"])
+    },
+    {
+      mood: "celebrate",
+      score: keywordScore(text, ["감사", "기쁨", "찬양", "축복", "웃", "즐거", "은혜", "부흥"])
+    },
+    {
+      mood: "surprised",
+      score: keywordScore(text, ["놀라", "뜻밖", "갑자기", "깨달", "처음", "새삼", "보았"])
+    },
+    {
+      mood: "hopeful",
+      score: keywordScore(text, ["소망", "희망", "회복", "다시 일어", "빛", "새롭게", "기대", "살아", "재림"])
+    },
+    {
+      mood: "reading",
+      score: keywordScore(text, ["말씀", "성경", "읽", "묵상", "배우", "기록", "본문", "에스라", "토라"])
+    },
+    {
+      mood: "comfort",
+      score: keywordScore(text, ["위로", "함께", "품", "돌보", "사랑", "격려", "안아", "공동체", "지키"])
+    }
+  ];
+
+  return candidates.reduce((best, candidate) => (candidate.score > best.score ? candidate : best), {
+    mood: "peaceful" as SheepMood,
+    score: 0
+  });
+}
+
+function keywordScore(text: string, keywords: string[]) {
+  return keywords.reduce((score, keyword) => score + (text.includes(keyword) ? 1 : 0), 0);
 }
 
 function sheepMoodLabel(mood: SheepMood) {
@@ -729,17 +828,16 @@ async function downloadBlogImage(scenes: BlogScene[]) {
 }
 
 function buildBlogHtml(scenes: BlogScene[]) {
-  const cards = scenes
-    .map((scene, index) => {
-      const image = `${BLOG_ASSET_ORIGIN}/toda-sheep-pack/png/${sheepMoodImage(scene.mood)}`;
-      return `<article class="toda-scene" data-mood="${scene.mood}">
-  <div class="toda-character">
-    <img src="${image}" alt="${escapeHtml(scene.label)}" width="112" height="112" />
-    <span>${escapeHtml(scene.label)}</span>
-  </div>
-  <p>${escapeHtml(scene.text)}</p>
-  <em>${String(index + 1).padStart(2, "0")}</em>
-</article>`;
+  const content = scenes
+    .map((scene) => {
+      const paragraph = `<p class="toda-paragraph">${escapeHtml(scene.text)}</p>`;
+      if (!scene.illustration) return paragraph;
+      const image = `${BLOG_ASSET_ORIGIN}/toda-sheep-pack/png/${sheepMoodImage(scene.illustration.mood)}`;
+      return `${paragraph}
+<figure class="toda-illustration" data-mood="${scene.illustration.mood}">
+  <img src="${image}" alt="${escapeHtml(scene.illustration.label)}" width="152" height="152" />
+  <figcaption>${escapeHtml(scene.illustration.label)}</figcaption>
+</figure>`;
     })
     .join("\n");
 
@@ -751,22 +849,17 @@ function buildBlogHtml(scenes: BlogScene[]) {
   <title>토다 그림책</title>
   <style>
     body { margin: 0; background: #fffdfb; color: #1f2b2c; font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
-    .toda-picturebook { max-width: 760px; margin: 0 auto; padding: 18px; display: grid; gap: 12px; }
-    .toda-scene { position: relative; min-height: 118px; display: grid; grid-template-columns: 116px minmax(0, 1fr); align-items: center; gap: 16px; overflow: hidden; padding: 12px 44px 12px 12px; border: 1px solid #d8dfdb; border-radius: 8px; background: linear-gradient(135deg, rgba(255, 253, 251, 0.98), rgba(249, 250, 247, 0.9)); box-sizing: border-box; }
-    .toda-scene[data-mood="sad"] { background: linear-gradient(135deg, rgba(245, 223, 230, 0.62), rgba(255, 253, 251, 0.96)); }
-    .toda-scene[data-mood="praying"], .toda-scene[data-mood="hopeful"] { background: linear-gradient(135deg, rgba(223, 243, 241, 0.72), rgba(255, 253, 251, 0.96)); }
-    .toda-scene[data-mood="celebrate"] { background: linear-gradient(135deg, rgba(255, 250, 242, 0.95), rgba(223, 243, 241, 0.52)); }
-    .toda-character { display: grid; justify-items: center; gap: 4px; }
-    .toda-character img { width: 112px; height: 112px; object-fit: contain; display: block; }
-    .toda-character span { color: #667274; font-size: 12px; line-height: 1.25; text-align: center; }
-    .toda-scene p { margin: 0; color: #1f2b2c; font-size: 18px; line-height: 1.75; word-break: keep-all; overflow-wrap: anywhere; }
-    .toda-scene em { position: absolute; right: 12px; bottom: 10px; color: rgba(105, 113, 117, 0.58); font-style: normal; font-size: 13px; }
-    @media (max-width: 520px) { .toda-picturebook { padding: 12px; } .toda-scene { grid-template-columns: 92px minmax(0, 1fr); gap: 10px; padding-right: 34px; } .toda-character img { width: 88px; height: 88px; } .toda-scene p { font-size: 16px; } }
+    .toda-picturebook { max-width: 760px; margin: 0 auto; padding: 24px 18px 32px; }
+    .toda-paragraph { margin: 0 0 18px; color: #1f2b2c; font-size: 19px; line-height: 1.9; word-break: keep-all; overflow-wrap: anywhere; }
+    .toda-illustration { margin: 12px 0 28px; display: grid; justify-items: center; gap: 6px; }
+    .toda-illustration img { width: 152px; height: 152px; object-fit: contain; display: block; }
+    .toda-illustration figcaption { color: #667274; font-size: 13px; line-height: 1.35; text-align: center; }
+    @media (max-width: 520px) { .toda-picturebook { padding: 18px 14px 28px; } .toda-paragraph { font-size: 17px; } .toda-illustration img { width: 132px; height: 132px; } }
   </style>
 </head>
 <body>
   <main class="toda-picturebook">
-${cards}
+${content}
   </main>
 </body>
 </html>`;
@@ -774,27 +867,29 @@ ${cards}
 
 async function renderBlogImage(scenes: BlogScene[]) {
   const width = 920;
-  const padding = 28;
-  const gap = 16;
-  const imageSize = 126;
-  const labelHeight = 22;
-  const leftColumn = 150;
-  const rightPadding = 58;
-  const textX = padding + leftColumn + 18;
-  const textMaxWidth = width - textX - padding - rightPadding;
-  const lineHeight = 34;
+  const paddingX = 58;
+  const paddingY = 42;
+  const paragraphGap = 26;
+  const imageSize = 160;
+  const imageGapTop = 10;
+  const imageGapBottom = 30;
+  const captionHeight = 22;
+  const textX = paddingX;
+  const textMaxWidth = width - paddingX * 2;
+  const lineHeight = 42;
   const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
   const measureCanvas = document.createElement("canvas");
   const measureContext = measureCanvas.getContext("2d");
   if (!measureContext) throw new Error("Canvas is not available.");
-  measureContext.font = "23px Malgun Gothic, Apple SD Gothic Neo, sans-serif";
+  measureContext.font = "27px Malgun Gothic, Apple SD Gothic Neo, sans-serif";
 
   const prepared = scenes.map((scene) => {
     const lines = wrapCanvasText(measureContext, scene.text, textMaxWidth);
-    const cardHeight = Math.max(164, lines.length * lineHeight + 58, imageSize + labelHeight + 36);
-    return { scene, lines, cardHeight };
+    const illustrationHeight = scene.illustration ? imageGapTop + imageSize + captionHeight + imageGapBottom : 0;
+    const blockHeight = lines.length * lineHeight + paragraphGap + illustrationHeight;
+    return { scene, lines, blockHeight };
   });
-  const height = padding * 2 + prepared.reduce((sum, item) => sum + item.cardHeight, 0) + gap * Math.max(0, prepared.length - 1);
+  const height = paddingY * 2 + prepared.reduce((sum, item) => sum + item.blockHeight, 0);
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(width * pixelRatio);
   canvas.height = Math.round(height * pixelRatio);
@@ -806,117 +901,114 @@ async function renderBlogImage(scenes: BlogScene[]) {
   context.scale(pixelRatio, pixelRatio);
   context.fillStyle = "#fffdfb";
   context.fillRect(0, 0, width, height);
-  context.font = "23px Malgun Gothic, Apple SD Gothic Neo, sans-serif";
+  context.font = "27px Malgun Gothic, Apple SD Gothic Neo, sans-serif";
   context.textBaseline = "top";
 
-  const images = await Promise.all(prepared.map(({ scene }) => loadImage(`/toda-sheep-pack/png/${sheepMoodImage(scene.mood)}`)));
-  let y = padding;
-  prepared.forEach(({ scene, lines, cardHeight }, index) => {
-    drawBlogCard(context, scene, lines, images[index], {
-      x: padding,
+  const imageEntries = await Promise.all(
+    prepared.map(async ({ scene }) => ({
+      id: scene.id,
+      image: scene.illustration ? await loadImage(`/toda-sheep-pack/png/${sheepMoodImage(scene.illustration.mood)}`) : null
+    }))
+  );
+  const imageMap = new Map(imageEntries.map((entry) => [entry.id, entry.image]));
+  let y = paddingY;
+  prepared.forEach(({ scene, lines }) => {
+    y = drawBlogBlock(context, scene, lines, imageMap.get(scene.id) ?? null, {
+      x: textX,
       y,
-      width: width - padding * 2,
-      height: cardHeight,
+      canvasWidth: width,
+      textMaxWidth,
       imageSize,
       lineHeight,
-      leftColumn,
-      textX,
-      textMaxWidth,
-      index
+      paragraphGap,
+      imageGapTop,
+      imageGapBottom,
+      captionHeight
     });
-    y += cardHeight + gap;
   });
 
   return canvasToBlob(canvas);
 }
 
-function drawBlogCard(
+function drawBlogBlock(
   context: CanvasRenderingContext2D,
   scene: BlogScene,
   lines: string[],
-  image: HTMLImageElement,
+  image: HTMLImageElement | null,
   layout: {
     x: number;
     y: number;
-    width: number;
-    height: number;
+    canvasWidth: number;
+    textMaxWidth: number;
     imageSize: number;
     lineHeight: number;
-    leftColumn: number;
-    textX: number;
-    textMaxWidth: number;
-    index: number;
+    paragraphGap: number;
+    imageGapTop: number;
+    imageGapBottom: number;
+    captionHeight: number;
   }
 ) {
-  const gradient = context.createLinearGradient(layout.x, layout.y, layout.x + layout.width, layout.y + layout.height);
-  const [start, end] = blogSceneColors(scene.mood);
-  gradient.addColorStop(0, start);
-  gradient.addColorStop(1, end);
-  roundedRect(context, layout.x, layout.y, layout.width, layout.height, 12);
-  context.fillStyle = gradient;
-  context.fill();
-  context.strokeStyle = "#d8dfdb";
-  context.lineWidth = 1;
-  context.stroke();
-
-  const imageX = layout.x + Math.round((layout.leftColumn - layout.imageSize) / 2);
-  const imageY = layout.y + 20;
-  context.drawImage(image, imageX, imageY, layout.imageSize, layout.imageSize);
-  context.fillStyle = "#667274";
-  context.font = "14px Malgun Gothic, Apple SD Gothic Neo, sans-serif";
-  context.textAlign = "center";
-  context.fillText(scene.label, layout.x + layout.leftColumn / 2, imageY + layout.imageSize + 4, layout.leftColumn - 8);
-
   context.fillStyle = "#1f2b2c";
-  context.font = "23px Malgun Gothic, Apple SD Gothic Neo, sans-serif";
+  context.font = "27px Malgun Gothic, Apple SD Gothic Neo, sans-serif";
   context.textAlign = "left";
-  const textY = layout.y + Math.max(24, Math.round((layout.height - lines.length * layout.lineHeight) / 2));
   lines.forEach((line, lineIndex) => {
-    context.fillText(line, layout.textX, textY + lineIndex * layout.lineHeight, layout.textMaxWidth);
+    context.fillText(line, layout.x, layout.y + lineIndex * layout.lineHeight, layout.textMaxWidth);
   });
 
-  context.fillStyle = "rgba(105, 113, 117, 0.58)";
-  context.font = "16px Malgun Gothic, Apple SD Gothic Neo, sans-serif";
-  context.textAlign = "right";
-  context.fillText(String(layout.index + 1).padStart(2, "0"), layout.x + layout.width - 14, layout.y + layout.height - 28);
-}
+  let nextY = layout.y + lines.length * layout.lineHeight + layout.paragraphGap;
+  if (scene.illustration && image) {
+    const imageX = Math.round((layout.canvasWidth - layout.imageSize) / 2);
+    const imageY = nextY + layout.imageGapTop;
+    context.drawImage(image, imageX, imageY, layout.imageSize, layout.imageSize);
+    context.fillStyle = "#667274";
+    context.font = "15px Malgun Gothic, Apple SD Gothic Neo, sans-serif";
+    context.textAlign = "center";
+    context.fillText(scene.illustration.label, layout.canvasWidth / 2, imageY + layout.imageSize + 5, layout.textMaxWidth);
+    nextY = imageY + layout.imageSize + layout.captionHeight + layout.imageGapBottom;
+  }
 
-function blogSceneColors(mood: SheepMood) {
-  if (mood === "sad") return ["rgba(245, 223, 230, 0.9)", "rgba(255, 253, 251, 0.98)"];
-  if (mood === "praying" || mood === "hopeful") return ["rgba(223, 243, 241, 0.95)", "rgba(255, 253, 251, 0.98)"];
-  if (mood === "celebrate") return ["rgba(255, 250, 242, 0.98)", "rgba(223, 243, 241, 0.82)"];
-  return ["rgba(255, 253, 251, 0.98)", "rgba(249, 250, 247, 0.94)"];
+  return nextY;
 }
 
 function wrapCanvasText(context: CanvasRenderingContext2D, text: string, maxWidth: number) {
   const lines: string[] = [];
   let current = "";
-  for (const char of Array.from(text.replace(/\s+/g, " ").trim())) {
-    const candidate = current + char;
+  const words = text.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
     if (current && context.measureText(candidate).width > maxWidth) {
-      lines.push(current.trimEnd());
-      current = char.trimStart();
+      lines.push(current);
+      current = word;
+    } else if (!current && context.measureText(candidate).width > maxWidth) {
+      const broken = breakLongWord(context, word, maxWidth);
+      lines.push(...broken.slice(0, -1));
+      current = broken.at(-1) ?? "";
     } else {
       current = candidate;
     }
   }
+
   if (current.trim()) lines.push(current.trim());
   return lines.length ? lines : [text];
 }
 
-function roundedRect(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
-  const safeRadius = Math.min(radius, width / 2, height / 2);
-  context.beginPath();
-  context.moveTo(x + safeRadius, y);
-  context.lineTo(x + width - safeRadius, y);
-  context.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
-  context.lineTo(x + width, y + height - safeRadius);
-  context.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
-  context.lineTo(x + safeRadius, y + height);
-  context.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
-  context.lineTo(x, y + safeRadius);
-  context.quadraticCurveTo(x, y, x + safeRadius, y);
-  context.closePath();
+function breakLongWord(context: CanvasRenderingContext2D, word: string, maxWidth: number) {
+  const lines: string[] = [];
+  let current = "";
+
+  for (const char of Array.from(word)) {
+    const candidate = current + char;
+    if (current && context.measureText(candidate).width > maxWidth) {
+      lines.push(current);
+      current = char;
+    } else {
+      current = candidate;
+    }
+  }
+
+  if (current) lines.push(current);
+  return lines;
 }
 
 function loadImage(src: string) {
