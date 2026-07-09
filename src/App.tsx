@@ -39,7 +39,8 @@ const destinationOptions: Array<{ value: Destination; label: string }> = [
   { value: "devotional", label: "묵상문" },
   { value: "letter", label: "서신" },
   { value: "column", label: "칼럼" },
-  { value: "social", label: "SNS" }
+  { value: "social", label: "SNS" },
+  { value: "blog", label: "블로그" }
 ];
 
 function App() {
@@ -124,6 +125,8 @@ function App() {
   const profile = useMemo(() => analyzeStyle(baseText), [baseText]);
   const resultProfile = useMemo(() => analyzeStyle(result?.text ?? ""), [result]);
   const matchScore = useMemo(() => (result?.text ? scoreMatch(result.text, profile) : 0), [result, profile]);
+  const blogScenes = useMemo(() => buildBlogScenes(result?.text ?? ""), [result?.text]);
+  const isBlogResult = Boolean(result?.text && (result.destination ?? options.destination) === "blog");
   const sourceChars = sourceText.replace(/\s/g, "").length;
   const baseChars = baseText.replace(/\s/g, "").length;
   const currentChars = currentBaseText.replace(/\s/g, "").length;
@@ -143,6 +146,7 @@ function App() {
           text: checked.text,
           provider: "local",
           baseLabel: label,
+          destination: options.destination,
           quality: checked.report
         });
         return;
@@ -167,6 +171,7 @@ function App() {
           provider: data.provider,
           model: data.model,
           baseLabel: label,
+          destination: options.destination,
           quality: checked.report
         });
         return;
@@ -182,6 +187,7 @@ function App() {
         text: checked.text,
         provider: "local",
         baseLabel: label,
+        destination: options.destination,
         quality: checked.report
       });
     } catch {
@@ -191,6 +197,7 @@ function App() {
         text: checked.text,
         provider: "local",
         baseLabel: label,
+        destination: options.destination,
         quality: checked.report
       });
     } finally {
@@ -211,6 +218,7 @@ function App() {
       text: checked.text,
       provider: "local",
       baseLabel,
+      destination: options.destination,
       quality: checked.report
     });
   }
@@ -572,6 +580,8 @@ function App() {
             </button>
           </div>
 
+          {isBlogResult ? <BlogPreview scenes={blogScenes} /> : null}
+
           <div className="score-grid">
             <Metric label="문체 일치" value={result ? `${matchScore}%` : "-"} />
             <Metric label="결과 호흡" value={result ? resultProfile.rhythmLabel : "-"} />
@@ -586,6 +596,178 @@ function App() {
       </section>
     </main>
   );
+}
+
+type SheepMood = "peaceful" | "sad" | "praying" | "surprised" | "hopeful" | "reading" | "comfort" | "celebrate";
+
+type BlogScene = {
+  id: string;
+  text: string;
+  mood: SheepMood;
+  label: string;
+};
+
+function BlogPreview({ scenes }: { scenes: BlogScene[] }) {
+  if (!scenes.length) return null;
+
+  return (
+    <div className="blog-preview">
+      <div className="section-label">
+        <Sparkles size={15} />
+        <span>토다 그림책 미리보기</span>
+      </div>
+      <div className="blog-scene-list">
+        {scenes.map((scene, index) => (
+          <article className="blog-scene" data-mood={scene.mood} key={scene.id}>
+            <div className="sheep-stage">
+              <TodaSheep mood={scene.mood} />
+              <span>{scene.label}</span>
+            </div>
+            <p>{scene.text}</p>
+            <em>{String(index + 1).padStart(2, "0")}</em>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TodaSheep({ mood }: { mood: SheepMood }) {
+  const isSad = mood === "sad";
+  const isPraying = mood === "praying";
+  const isSurprised = mood === "surprised";
+  const isCelebrate = mood === "celebrate";
+  const isReading = mood === "reading";
+
+  return (
+    <svg className="toda-sheep" viewBox="0 0 140 140" role="img" aria-label={`토다 양 ${mood}`}>
+      <circle className="sheep-glow" cx="70" cy="72" r="58" />
+      {isCelebrate ? (
+        <g className="sheep-confetti">
+          <path d="M25 25l8 6" />
+          <path d="M111 25l-7 7" />
+          <path d="M116 58l10 1" />
+          <path d="M18 59l-9 3" />
+        </g>
+      ) : null}
+      {mood === "hopeful" ? <path className="sheep-star" d="M112 34l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" /> : null}
+      <ellipse className="sheep-ear" cx="37" cy="70" rx="14" ry="20" />
+      <ellipse className="sheep-ear right" cx="103" cy="70" rx="14" ry="20" />
+      <g className="sheep-wool">
+        <circle cx="45" cy="46" r="18" />
+        <circle cx="63" cy="36" r="19" />
+        <circle cx="83" cy="38" r="18" />
+        <circle cx="98" cy="52" r="18" />
+        <circle cx="95" cy="74" r="20" />
+        <circle cx="72" cy="86" r="24" />
+        <circle cx="49" cy="75" r="21" />
+        <circle cx="39" cy="57" r="17" />
+      </g>
+      <path className="sheep-face" d="M48 58c0-21 44-21 44 0v22c0 16-9 26-22 26S48 96 48 80z" />
+      <path className="sheep-scarf" d="M48 98c12 10 35 10 47 0l8 12c-19 12-47 12-63 0z" />
+      <path className="sheep-scarf-tail" d="M83 104l18 19 4-21z" />
+      {isSurprised ? (
+        <>
+          <circle className="sheep-eye" cx="60" cy="70" r="4.5" />
+          <circle className="sheep-eye" cx="80" cy="70" r="4.5" />
+          <ellipse className="sheep-mouth-fill" cx="70" cy="86" rx="5" ry="7" />
+        </>
+      ) : isSad ? (
+        <>
+          <path className="sheep-eye-line" d="M55 72q6-6 12 0" />
+          <path className="sheep-eye-line" d="M73 72q6-6 12 0" />
+          <path className="sheep-mouth" d="M62 91q8-7 16 0" />
+          <path className="sheep-tear" d="M86 77c5 6 5 10 0 12-5-2-5-6 0-12z" />
+        </>
+      ) : isPraying ? (
+        <>
+          <path className="sheep-eye-line" d="M55 70q6 5 12 0" />
+          <path className="sheep-eye-line" d="M73 70q6 5 12 0" />
+          <path className="sheep-mouth" d="M64 86q6 4 12 0" />
+        </>
+      ) : (
+        <>
+          <path className="sheep-eye-line" d="M55 70q6 5 12 0" />
+          <path className="sheep-eye-line" d="M73 70q6 5 12 0" />
+          <path className="sheep-mouth" d={isCelebrate ? "M59 85q11 12 22 0" : "M62 84q8 7 16 0"} />
+        </>
+      )}
+      <circle className="sheep-blush" cx="51" cy="82" r="5" />
+      <circle className="sheep-blush" cx="89" cy="82" r="5" />
+      {isPraying ? (
+        <g className="sheep-hands">
+          <path d="M56 103c8-12 18-12 26 0" />
+          <path d="M63 99v18" />
+          <path d="M75 99v18" />
+        </g>
+      ) : null}
+      {isReading ? (
+        <g className="sheep-book">
+          <path d="M38 101c12-5 22-3 32 5v21c-10-8-20-10-32-5z" />
+          <path d="M70 106c10-8 20-10 32-5v21c-12-5-22-3-32 5z" />
+          <path d="M70 106v21" />
+        </g>
+      ) : null}
+      {mood === "comfort" ? (
+        <path className="sheep-heart" d="M104 90c-8-8-22 1-11 13l11 10 11-10c11-12-3-21-11-13z" />
+      ) : null}
+    </svg>
+  );
+}
+
+function buildBlogScenes(text: string): BlogScene[] {
+  const blocks = text
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .filter((block) => !/^(#{1,6}\s+|[-*+]\s+|\d+\.\s+)/.test(block));
+
+  return blocks.flatMap((block, blockIndex) => {
+    const pieces = block.length > 130 ? splitPreviewSentences(block) : [block];
+    return pieces.map((piece, pieceIndex) => {
+      const mood = detectSheepMood(piece, blockIndex + pieceIndex);
+      return {
+        id: `${blockIndex}-${pieceIndex}-${piece.slice(0, 12)}`,
+        text: piece,
+        mood,
+        label: sheepMoodLabel(mood)
+      };
+    });
+  });
+}
+
+function splitPreviewSentences(text: string) {
+  return (
+    text
+      .match(/[^.!?。！？]+[.!?。！？]?/g)
+      ?.map((sentence) => sentence.trim())
+      .filter(Boolean) ?? [text]
+  );
+}
+
+function detectSheepMood(text: string, index: number): SheepMood {
+  if (/절망|낙심|슬픔|아픔|눈물|울었|두려|무너|외로|상처|고난|탄식|길도 보이지|보이지 않았/.test(text)) return "sad";
+  if (/기도|간구|무릎|주님께|하나님께|아멘/.test(text)) return "praying";
+  if (/감사|기쁨|찬양|축복|웃|즐거|은혜/.test(text)) return "celebrate";
+  if (/놀라|뜻밖|갑자기|깨달|처음|새삼|보았/.test(text)) return "surprised";
+  if (/소망|희망|회복|다시 일어|빛|새롭게|기대|살아/.test(text)) return "hopeful";
+  if (/말씀|성경|읽|묵상|배우|기록|본문|에스라|토라/.test(text)) return "reading";
+  if (/위로|함께|품|돌보|사랑|격려|안아|공동체/.test(text)) return "comfort";
+  return index % 5 === 0 ? "peaceful" : "hopeful";
+}
+
+function sheepMoodLabel(mood: SheepMood) {
+  const labels: Record<SheepMood, string> = {
+    peaceful: "평안한 토다 양",
+    sad: "절망한 토다 양",
+    praying: "기도하는 토다 양",
+    surprised: "놀란 토다 양",
+    hopeful: "소망을 보는 토다 양",
+    reading: "말씀 읽는 토다 양",
+    comfort: "위로하는 토다 양",
+    celebrate: "기뻐하는 토다 양"
+  };
+  return labels[mood];
 }
 
 function QualityPanel({ report }: { report?: QualityReport }) {

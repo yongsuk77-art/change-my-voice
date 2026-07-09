@@ -1,4 +1,4 @@
-export type Destination = "sermon" | "column" | "devotional" | "letter" | "social";
+export type Destination = "sermon" | "column" | "devotional" | "letter" | "social" | "blog";
 
 export type StyleOptions = {
   intensity: number;
@@ -30,6 +30,7 @@ export type RewriteResult = {
   provider: "openai" | "local";
   model?: string;
   baseLabel?: string;
+  destination?: Destination;
   quality?: QualityReport;
 };
 

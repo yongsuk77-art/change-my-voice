@@ -38,7 +38,8 @@ const DESTINATION_LABELS: Record<Destination, string> = {
   column: "칼럼",
   devotional: "묵상문",
   letter: "목회서신",
-  social: "SNS"
+  social: "SNS",
+  blog: "블로그"
 };
 
 export function analyzeStyle(text: string): StyleProfile {
@@ -107,7 +108,8 @@ export function rewriteLocally(source: string, sample: string, options: StyleOpt
 
   const opened = addOpening(rewritten, profile, options, hasProfile);
   const closed = addClosing(opened, profile, options, hasProfile);
-  return finalizeTextQuality(source, closed.join("\n\n"), options).text;
+  const draft = options.destination === "blog" ? formatBlogText(closed.join("\n\n")) : closed.join("\n\n");
+  return finalizeTextQuality(source, draft, options).text;
 }
 
 export function finalizeTextQuality(original: string, draft: string, options: StyleOptions): { text: string; report: QualityReport } {
@@ -292,6 +294,10 @@ function shapeSentence(
     shaped = shaped.replace(/습니다\./g, "습니다.").replace(/것입니다\./g, "겁니다.");
   }
 
+  if (options.destination === "blog") {
+    shaped = shaped.replace(/ 것입니다\./g, "입니다.").replace(/인 것입니다\./g, "입니다.");
+  }
+
   const shouldAddBridge =
     hasProfile &&
     options.intensity >= 88 &&
@@ -344,7 +350,57 @@ function tuneParagraph(
     tuned = tuned.replace(/^(오늘 우리는|사랑하는 성도 여러분,\s*)/, "");
   }
 
+  if (options.destination === "blog") {
+    tuned = tuned
+      .replace(/^(사랑하는 성도 여러분,\s*|여러분,\s*)/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
   return tuned;
+}
+
+function formatBlogText(text: string) {
+  const result: string[] = [];
+  for (const block of text.split(/\n{2,}/).map((item) => item.trim()).filter(Boolean)) {
+    if (isStructuralBlock(block)) {
+      result.push(block);
+      continue;
+    }
+
+    for (const sentence of splitSentences(block)) {
+      const parts = splitLongBlogSentence(sentence);
+      result.push(...parts);
+    }
+  }
+  return result.join("\n\n");
+}
+
+function splitLongBlogSentence(sentence: string) {
+  const trimmed = sentence.trim();
+  if (trimmed.length <= 78) return [trimmed];
+
+  const clauses = trimmed.split(/,\s+|;\s+|\s+(?=그리고|그러나|그러므로|하지만|또한)\s*/).map((item) => item.trim()).filter(Boolean);
+  if (clauses.length < 2) return [trimmed];
+
+  const result: string[] = [];
+  let current = "";
+  for (const clause of clauses) {
+    const next = current ? `${current} ${clause}` : clause;
+    if (next.length > 72 && current) {
+      result.push(ensureSentenceEnd(current));
+      current = clause;
+    } else {
+      current = next;
+    }
+  }
+  if (current) result.push(ensureSentenceEnd(current));
+  return result;
+}
+
+function ensureSentenceEnd(value: string) {
+  const trimmed = value.trim();
+  return /[.!?。！？]$/.test(trimmed) ? trimmed : `${trimmed}.`;
 }
 
 function addOpening(paragraphs: string[], profile: StyleProfile, options: StyleOptions, hasProfile: boolean) {

@@ -215,6 +215,173 @@ h1 {
   background: #fffdfb;
 }
 
+.blog-preview {
+  display: grid;
+  gap: 9px;
+}
+
+.blog-scene-list {
+  display: grid;
+  gap: 10px;
+}
+
+.blog-scene {
+  position: relative;
+  min-height: 118px;
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
+  padding: 10px 40px 10px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 253, 251, 0.98), rgba(249, 250, 247, 0.9)),
+    var(--surface-soft);
+}
+
+.blog-scene[data-mood="sad"] {
+  background: linear-gradient(135deg, rgba(245, 223, 230, 0.62), rgba(255, 253, 251, 0.96));
+}
+
+.blog-scene[data-mood="praying"],
+.blog-scene[data-mood="hopeful"] {
+  background: linear-gradient(135deg, rgba(223, 243, 241, 0.72), rgba(255, 253, 251, 0.96));
+}
+
+.blog-scene[data-mood="celebrate"] {
+  background: linear-gradient(135deg, rgba(255, 250, 242, 0.95), rgba(223, 243, 241, 0.52));
+}
+
+.blog-scene p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.72;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.blog-scene em {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  color: rgba(105, 113, 117, 0.5);
+  font-style: normal;
+  font-size: 12px;
+}
+
+.sheep-stage {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+
+.sheep-stage span {
+  max-width: 100%;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.toda-sheep {
+  width: 94px;
+  height: 94px;
+  overflow: visible;
+}
+
+.sheep-glow {
+  fill: rgba(223, 243, 241, 0.7);
+}
+
+.sheep-ear {
+  fill: #e9c9c5;
+  stroke: #6e5b50;
+  stroke-width: 3;
+}
+
+.sheep-ear.right {
+  transform-origin: 103px 70px;
+}
+
+.sheep-wool circle {
+  fill: #fff9ef;
+  stroke: #6e5b50;
+  stroke-width: 3;
+}
+
+.sheep-face {
+  fill: #f8ddcf;
+  stroke: #6e5b50;
+  stroke-width: 3;
+}
+
+.sheep-scarf {
+  fill: var(--teal);
+  stroke: #065f62;
+  stroke-width: 3;
+}
+
+.sheep-scarf-tail {
+  fill: #0b9a9e;
+  stroke: #065f62;
+  stroke-width: 3;
+}
+
+.sheep-eye {
+  fill: #312723;
+}
+
+.sheep-eye-line,
+.sheep-mouth,
+.sheep-hands path,
+.sheep-confetti path {
+  fill: none;
+  stroke: #312723;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.sheep-mouth-fill {
+  fill: #8b2f48;
+}
+
+.sheep-blush {
+  fill: rgba(220, 111, 126, 0.42);
+}
+
+.sheep-tear {
+  fill: #7cc7df;
+}
+
+.sheep-star {
+  fill: #f7c85c;
+  stroke: #8a6820;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.sheep-book path {
+  fill: #fffdfb;
+  stroke: #6e5b50;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.sheep-heart {
+  fill: var(--wine);
+  stroke: #6e5b50;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.sheep-confetti path {
+  stroke: var(--gold);
+}
+
 .panel-actions,
 .base-toolbar,
 .primary-actions,
@@ -600,7 +767,7 @@ input[type="range"] {
 
 .segmented {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 6px;
   padding: 4px;
   border: 1px solid var(--line);
@@ -774,5 +941,16 @@ input[type="range"] {
   .fingerprint,
   .score-grid {
     grid-template-columns: 1fr;
+  }
+
+  .blog-scene {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    padding: 12px;
+    text-align: center;
+  }
+
+  .blog-scene p {
+    font-size: 14px;
   }
 }
