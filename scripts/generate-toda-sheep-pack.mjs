@@ -63,7 +63,7 @@ if (characterImages.length < assets.length) {
 for (const asset of assets) {
   const manualCrop = manualSourceCrops.get(asset.index);
   const cleaned = manualCrop
-    ? await sharp(sourceTransparent).extract(manualCrop).png().toBuffer()
+    ? await removeEdgeFragments(await sharp(sourceTransparent).extract(manualCrop).png().toBuffer())
     : characterImages[asset.index - 1];
   await sharp(cleaned)
     .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 8 })
@@ -257,6 +257,38 @@ async function makeMaskedCharacter(data, info, components) {
   }
 
   return sharp(output, { raw: { width: outputWidth, height: outputHeight, channels } }).png().toBuffer();
+}
+
+async function removeEdgeFragments(input) {
+  const { data, info } = await sharp(input)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const { width, height, channels } = info;
+
+  for (let index = 0; index < data.length; index += channels) {
+    if (data[index + 3] <= 100) {
+      data[index + 3] = 0;
+    }
+  }
+
+  const components = findComponents(data, info, 20);
+  const largestArea = Math.max(...components.map((component) => component.area), 1);
+
+  for (const component of components) {
+    const touchesEdge =
+      component.minX <= 2 ||
+      component.maxX >= width - 3 ||
+      component.minY <= 2 ||
+      component.maxY >= height - 3;
+    if (touchesEdge && component.area < largestArea * 0.45) {
+      for (const pixel of component.pixels) {
+        data[pixel * channels + 3] = 0;
+      }
+    }
+  }
+
+  return sharp(data, { raw: info }).png().toBuffer();
 }
 
 async function makeContactSheet() {

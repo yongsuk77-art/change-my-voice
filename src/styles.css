@@ -300,21 +300,17 @@ h1 {
 .blog-illustration {
   display: grid;
   justify-items: center;
-  gap: 5px;
+  gap: 8px;
   margin: 2px 0 22px;
   padding: 4px 0 0;
 }
 
-.blog-illustration figcaption {
+.blog-illustration-tools {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
   justify-content: center;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.35;
-  text-align: center;
 }
 
 .blog-illustration .toda-sheep {

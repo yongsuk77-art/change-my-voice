@@ -111,7 +111,7 @@ if (isProd) {
 
 app.listen(port, "127.0.0.1", () => {
   const mode = process.env.OPENAI_API_KEY ? `OpenAI ${defaultModel}` : "로컬 변환";
-  console.log(`내 말투로 앱이 실행 중입니다: http://127.0.0.1:${port} (${mode})`);
+  console.log(`WordTone 앱이 실행 중입니다: http://127.0.0.1:${port} (${mode})`);
 });
 
 function safeText(value, limit) {

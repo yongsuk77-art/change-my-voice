@@ -82,7 +82,7 @@ function App() {
       setSourceText(parsed.sourceText || defaultSource);
       setOptions((current) => ({ ...current, ...parsed.options }));
       setResult(parsed.result || null);
-      setBlogScenes(Array.isArray(parsed.blogScenes) ? parsed.blogScenes : []);
+      setBlogScenes(Array.isArray(parsed.blogScenes) ? normalizeBlogScenes(parsed.blogScenes) : []);
       setBlogDraftKey(parsed.blogDraftKey || "");
     } catch {
       localStorage.removeItem(STORAGE_KEY);
@@ -286,7 +286,7 @@ function App() {
   function handleDownload() {
     if (!result?.text) return;
     const blob = new Blob([result.text], { type: "text/plain;charset=utf-8" });
-    downloadBlob(blob, `내-말투-${todayStamp()}.txt`);
+    downloadBlob(blob, `WordTone-${todayStamp()}.txt`);
   }
 
   async function handleFileUpload(event: ChangeEvent<HTMLInputElement>) {
@@ -380,7 +380,7 @@ function App() {
             <Mic2 size={24} />
           </div>
           <div>
-            <h1>내 말투로</h1>
+            <h1>WordTone</h1>
             <p>흩어진 AI 문장을 오래 써 온 설교자의 목소리로 정리합니다.</p>
           </div>
         </div>
@@ -619,18 +619,40 @@ function App() {
   );
 }
 
-type SheepMood = "peaceful" | "sad" | "praying" | "surprised" | "hopeful" | "reading" | "comfort" | "celebrate";
+const sheepMoodOptions = [
+  { value: "peaceful", label: "01 평안", fullLabel: "평안히 앉은 토다 양", image: "01-peaceful.png" },
+  { value: "despair", label: "02 절망", fullLabel: "절망한 토다 양", image: "02-despair.png" },
+  { value: "praying", label: "03 기도", fullLabel: "기도하는 토다 양", image: "03-praying.png" },
+  { value: "surprised", label: "04 놀람", fullLabel: "놀란 토다 양", image: "04-surprised.png" },
+  { value: "hopeful", label: "05 소망", fullLabel: "소망을 보는 토다 양", image: "05-hopeful.png" },
+  { value: "reading-bible", label: "06 말씀 읽기", fullLabel: "성경 읽는 토다 양", image: "06-reading-bible.png" },
+  { value: "comforting", label: "07 위로", fullLabel: "어린 양을 안아주는 토다 양", image: "07-comforting.png" },
+  { value: "celebrating", label: "08 기쁨", fullLabel: "기뻐 뛰는 토다 양", image: "08-celebrating.png" },
+  { value: "thinking", label: "09 생각", fullLabel: "생각하는 토다 양", image: "09-thinking.png" },
+  { value: "sleeping", label: "10 쉼", fullLabel: "잠든 토다 양", image: "10-sleeping.png" },
+  { value: "waving", label: "11 인사", fullLabel: "손 흔드는 토다 양", image: "11-waving.png" },
+  { value: "heart", label: "12 사랑", fullLabel: "하트를 든 토다 양", image: "12-heart.png" },
+  { value: "worshiping", label: "13 찬양", fullLabel: "찬양하는 토다 양", image: "13-worshiping.png" },
+  { value: "teaching", label: "14 가르침", fullLabel: "말씀을 가르치는 토다 양", image: "14-teaching.png" },
+  { value: "listening", label: "15 경청", fullLabel: "가만히 듣는 토다 양", image: "15-listening.png" },
+  { value: "walking", label: "16 동행", fullLabel: "걸어가는 토다 양", image: "16-walking.png" },
+  { value: "running", label: "17 달림", fullLabel: "달려가는 토다 양", image: "17-running.png" },
+  { value: "umbrella", label: "18 보호", fullLabel: "우산 든 토다 양", image: "18-umbrella.png" },
+  { value: "lantern", label: "19 인도", fullLabel: "등불 든 토다 양", image: "19-lantern.png" },
+  { value: "crying", label: "20 눈물", fullLabel: "눈물 흘리는 토다 양", image: "20-crying.png" },
+  { value: "smiling", label: "21 웃음", fullLabel: "활짝 웃는 토다 양", image: "21-smiling.png" },
+  { value: "confused", label: "22 당황", fullLabel: "어리둥절한 토다 양", image: "22-confused.png" },
+  { value: "thankful", label: "23 감사", fullLabel: "감사하는 토다 양", image: "23-thankful.png" },
+  { value: "holding-heart", label: "24 마음", fullLabel: "큰 하트를 안은 토다 양", image: "24-holding-heart.png" },
+  { value: "carrying-book", label: "25 책", fullLabel: "책을 안은 토다 양", image: "25-carrying-book.png" },
+  { value: "pointing-up", label: "26 하늘 보기", fullLabel: "위를 가리키는 토다 양", image: "26-pointing-up.png" },
+  { value: "writing", label: "27 기록", fullLabel: "글 쓰는 토다 양", image: "27-writing.png" },
+  { value: "tea", label: "28 차 한잔", fullLabel: "차 마시는 토다 양", image: "28-tea.png" },
+  { value: "kneeling", label: "29 무릎", fullLabel: "무릎 꿇고 기도하는 토다 양", image: "29-kneeling.png" },
+  { value: "cheering", label: "30 응원", fullLabel: "응원하는 토다 양", image: "30-cheering.png" }
+] as const;
 
-const sheepMoodOptions: Array<{ value: SheepMood; label: string }> = [
-  { value: "peaceful", label: "평안한 토다 양" },
-  { value: "sad", label: "절망한 토다 양" },
-  { value: "praying", label: "기도하는 토다 양" },
-  { value: "surprised", label: "놀란 토다 양" },
-  { value: "hopeful", label: "소망을 보는 토다 양" },
-  { value: "reading", label: "말씀 읽는 토다 양" },
-  { value: "comfort", label: "위로하는 토다 양" },
-  { value: "celebrate", label: "기뻐하는 토다 양" }
-];
+type SheepMood = (typeof sheepMoodOptions)[number]["value"];
 
 type BlogScene = {
   id: string;
@@ -759,8 +781,7 @@ function BlogPreview({ scenes, onScenesChange }: { scenes: BlogScene[]; onScenes
             />
             {scene.illustration ? (
               <figure className="blog-illustration" data-mood={scene.illustration.mood}>
-                <TodaSheep mood={scene.illustration.mood} />
-                <figcaption>
+                <div className="blog-illustration-tools">
                   <select
                     className="blog-mood-select"
                     value={scene.illustration.mood}
@@ -777,7 +798,8 @@ function BlogPreview({ scenes, onScenesChange }: { scenes: BlogScene[]; onScenes
                     <Trash2 size={14} />
                     그림 삭제
                   </button>
-                </figcaption>
+                </div>
+                <TodaSheep mood={scene.illustration.mood} />
               </figure>
             ) : (
               <div className="blog-add-illustration">
@@ -894,7 +916,7 @@ function placeBlogIllustrations(scenes: BlogScene[]) {
 function assessSheepMood(text: string): { mood: SheepMood; score: number } {
   const candidates: Array<{ mood: SheepMood; score: number }> = [
     {
-      mood: "sad",
+      mood: "despair",
       score: keywordScore(text, ["절망", "낙심", "슬픔", "아픔", "눈물", "울었", "두려", "무너", "외로", "상처", "고난", "탄식", "어둠"])
     },
     {
@@ -902,7 +924,7 @@ function assessSheepMood(text: string): { mood: SheepMood; score: number } {
       score: keywordScore(text, ["기도", "간구", "무릎", "주님께", "하나님께", "아멘", "예배"])
     },
     {
-      mood: "celebrate",
+      mood: "celebrating",
       score: keywordScore(text, ["감사", "기쁨", "찬양", "축복", "웃", "즐거", "은혜", "부흥"])
     },
     {
@@ -914,11 +936,11 @@ function assessSheepMood(text: string): { mood: SheepMood; score: number } {
       score: keywordScore(text, ["소망", "희망", "회복", "다시 일어", "빛", "새롭게", "기대", "살아", "재림"])
     },
     {
-      mood: "reading",
+      mood: "reading-bible",
       score: keywordScore(text, ["말씀", "성경", "읽", "묵상", "배우", "기록", "본문", "에스라", "토라"])
     },
     {
-      mood: "comfort",
+      mood: "comforting",
       score: keywordScore(text, ["위로", "함께", "품", "돌보", "사랑", "격려", "안아", "공동체", "지키"])
     }
   ];
@@ -933,6 +955,37 @@ function keywordScore(text: string, keywords: string[]) {
   return keywords.reduce((score, keyword) => score + (text.includes(keyword) ? 1 : 0), 0);
 }
 
+function normalizeBlogScenes(rawScenes: BlogScene[]) {
+  return rawScenes.map((scene, index) => {
+    const mood = normalizeSheepMood(String(scene.mood), index);
+    const illustrationMood = scene.illustration ? normalizeSheepMood(String(scene.illustration.mood), index) : undefined;
+    return {
+      ...scene,
+      id: scene.id || createId(),
+      text: scene.text || "",
+      mood,
+      illustration: illustrationMood
+        ? {
+            mood: illustrationMood,
+            label: sheepMoodLabel(illustrationMood)
+          }
+        : undefined
+    };
+  });
+}
+
+function normalizeSheepMood(value: string, index = 0): SheepMood {
+  const aliases: Record<string, SheepMood> = {
+    sad: "despair",
+    reading: "reading-bible",
+    comfort: "comforting",
+    celebrate: "celebrating"
+  };
+  const normalized = aliases[value] ?? value;
+  if (sheepMoodOptions.some((option) => option.value === normalized)) return normalized as SheepMood;
+  return index % 5 === 0 ? "peaceful" : "hopeful";
+}
+
 function createBlogDraftKey(text: string, destination: Destination) {
   let hash = 0;
   for (const char of text) {
@@ -942,31 +995,11 @@ function createBlogDraftKey(text: string, destination: Destination) {
 }
 
 function sheepMoodLabel(mood: SheepMood) {
-  const labels: Record<SheepMood, string> = {
-    peaceful: "평안한 토다 양",
-    sad: "절망한 토다 양",
-    praying: "기도하는 토다 양",
-    surprised: "놀란 토다 양",
-    hopeful: "소망을 보는 토다 양",
-    reading: "말씀 읽는 토다 양",
-    comfort: "위로하는 토다 양",
-    celebrate: "기뻐하는 토다 양"
-  };
-  return labels[mood];
+  return sheepMoodOptions.find((option) => option.value === mood)?.fullLabel ?? "토다 양";
 }
 
 function sheepMoodImage(mood: SheepMood) {
-  const images: Record<SheepMood, string> = {
-    peaceful: "01-peaceful.png",
-    sad: "02-despair.png",
-    praying: "03-praying.png",
-    surprised: "04-surprised.png",
-    hopeful: "05-hopeful.png",
-    reading: "06-reading-bible.png",
-    comfort: "07-comforting.png",
-    celebrate: "08-celebrating.png"
-  };
-  return images[mood];
+  return sheepMoodOptions.find((option) => option.value === mood)?.image ?? "01-peaceful.png";
 }
 
 function downloadBlogHtml(scenes: BlogScene[]) {
@@ -992,7 +1025,6 @@ function buildBlogHtml(scenes: BlogScene[]) {
       return `${paragraph}
 <figure class="toda-illustration" data-mood="${scene.illustration.mood}">
   <img src="${image}" alt="${escapeHtml(scene.illustration.label)}" width="152" height="152" />
-  <figcaption>${escapeHtml(scene.illustration.label)}</figcaption>
 </figure>`;
     })
     .join("\n");
@@ -1007,9 +1039,8 @@ function buildBlogHtml(scenes: BlogScene[]) {
     body { margin: 0; background: #fffdfb; color: #1f2b2c; font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
     .toda-picturebook { max-width: 760px; margin: 0 auto; padding: 24px 18px 32px; }
     .toda-paragraph { margin: 0 0 18px; color: #1f2b2c; font-size: 19px; line-height: 1.9; word-break: keep-all; overflow-wrap: anywhere; }
-    .toda-illustration { margin: 12px 0 28px; display: grid; justify-items: center; gap: 6px; }
+    .toda-illustration { margin: 12px 0 28px; display: grid; justify-items: center; }
     .toda-illustration img { width: 152px; height: 152px; object-fit: contain; display: block; }
-    .toda-illustration figcaption { color: #667274; font-size: 13px; line-height: 1.35; text-align: center; }
     @media (max-width: 520px) { .toda-picturebook { padding: 18px 14px 28px; } .toda-paragraph { font-size: 17px; } .toda-illustration img { width: 132px; height: 132px; } }
   </style>
 </head>
@@ -1029,7 +1060,6 @@ async function renderBlogImage(scenes: BlogScene[]) {
   const imageSize = 160;
   const imageGapTop = 10;
   const imageGapBottom = 30;
-  const captionHeight = 22;
   const textX = paddingX;
   const textMaxWidth = width - paddingX * 2;
   const lineHeight = 42;
@@ -1041,7 +1071,7 @@ async function renderBlogImage(scenes: BlogScene[]) {
 
   const prepared = scenes.map((scene) => {
     const lines = wrapCanvasText(measureContext, scene.text, textMaxWidth);
-    const illustrationHeight = scene.illustration ? imageGapTop + imageSize + captionHeight + imageGapBottom : 0;
+    const illustrationHeight = scene.illustration ? imageGapTop + imageSize + imageGapBottom : 0;
     const blockHeight = lines.length * lineHeight + paragraphGap + illustrationHeight;
     return { scene, lines, blockHeight };
   });
@@ -1078,8 +1108,7 @@ async function renderBlogImage(scenes: BlogScene[]) {
       lineHeight,
       paragraphGap,
       imageGapTop,
-      imageGapBottom,
-      captionHeight
+      imageGapBottom
     });
   });
 
@@ -1101,7 +1130,6 @@ function drawBlogBlock(
     paragraphGap: number;
     imageGapTop: number;
     imageGapBottom: number;
-    captionHeight: number;
   }
 ) {
   context.fillStyle = "#1f2b2c";
@@ -1116,11 +1144,7 @@ function drawBlogBlock(
     const imageX = Math.round((layout.canvasWidth - layout.imageSize) / 2);
     const imageY = nextY + layout.imageGapTop;
     context.drawImage(image, imageX, imageY, layout.imageSize, layout.imageSize);
-    context.fillStyle = "#667274";
-    context.font = "15px Malgun Gothic, Apple SD Gothic Neo, sans-serif";
-    context.textAlign = "center";
-    context.fillText(scene.illustration.label, layout.canvasWidth / 2, imageY + layout.imageSize + 5, layout.textMaxWidth);
-    nextY = imageY + layout.imageSize + layout.captionHeight + layout.imageGapBottom;
+    nextY = imageY + layout.imageSize + layout.imageGapBottom;
   }
 
   return nextY;
